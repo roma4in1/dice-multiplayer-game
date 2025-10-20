@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "657920169419",
+    "project_id": "dice-multiplayer-game",
+    "storage_bucket": "dice-multiplayer-game.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:657920169419:android:e596b488b3094fac74124e",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBCGi2mec5lVsjwVOIjyFS7Kx_QFO_uO3I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
