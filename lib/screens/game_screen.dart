@@ -116,6 +116,56 @@ class _GameScreenState extends State<GameScreen> {
                         fontSize: 18,
                       ),
                     ),
+
+                    const SizedBox(height: 16),
+                    // ✅ ADDED: Score Display
+                    StreamBuilder<GameState?>(
+                      stream: _firestoreService.getGameStream(widget.gameId),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const SizedBox();
+                        final game = snapshot.data!;
+                        final players = game.players.entries
+                            .map((e) => Player.fromJson(e.value))
+                            .toList();
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: players.map((player) {
+                              final isMe =
+                                  player.id == _authService.currentUserId;
+                              return Column(
+                                children: [
+                                  Text(
+                                    isMe ? 'You' : player.name,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: isMe
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${player.totalPoints} pts',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

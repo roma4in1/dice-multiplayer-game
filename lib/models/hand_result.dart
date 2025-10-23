@@ -13,19 +13,6 @@ extension HandRankExtension on HandRank {
         return 'Triple';
     }
   }
-
-  int get points {
-    switch (this) {
-      case HandRank.highCard:
-        return 1;
-      case HandRank.pair:
-        return 3;
-      case HandRank.straight:
-        return 5;
-      case HandRank.triple:
-        return 10;
-    }
-  }
 }
 
 class HandResult {
@@ -86,7 +73,7 @@ class HandEvaluator {
       diceValues: diceValues,
       rank: rank,
       highCard: highCard,
-      points: rank.points,
+      points: 5,
     );
   }
 
