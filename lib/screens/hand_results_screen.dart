@@ -341,7 +341,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                         : () async {
                             // Mark this player as ready
                             await firestoreService.markPlayerReadyToContinue(
-                              gameId,
+                              widget.gameId,
                               myPlayerId,
                             );
                           },
