@@ -128,7 +128,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                           ),
                         ),
                       );
-                    }).toList(),
+                    }),
                     const SizedBox(height: 8),
                     if (winnerIds.isNotEmpty) ...[
                       Text(
@@ -325,7 +325,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                           ),
                         ),
                       );
-                    }).toList(),
+                    }),
                   ],
                 ),
               ),

@@ -25,7 +25,7 @@ class _GameScreenState extends State<GameScreen> {
   bool _hasNavigatedToBetting = false;
   bool _hasNavigatedToResults = false; // ✅ ADDED THIS FLAG
   bool _isRolling = false;
-  List<int> _selectedDiceIndices = [];
+  final List<int> _selectedDiceIndices = [];
   bool _isSubmittingHand = false;
 
   @override
@@ -708,7 +708,7 @@ class _GameScreenState extends State<GameScreen> {
               final hasRolled = playersWhoRolled.contains(opponent.id);
               final isRolling = currentlyRolling == opponent.id;
               return _buildOpponentRollingCard(opponent, hasRolled, isRolling);
-            }).toList(),
+            }),
           ],
 
           const SizedBox(height: 20),
@@ -1044,7 +1044,7 @@ class _GameScreenState extends State<GameScreen> {
                       final opponentData = publicData[opponent.id];
                       if (opponentData == null) return const SizedBox();
                       return _buildOpponentDice(opponent, opponentData);
-                    }).toList(),
+                    }),
                   ],
 
                   const SizedBox(height: 24),
@@ -1187,7 +1187,7 @@ class _GameScreenState extends State<GameScreen> {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ),
         );

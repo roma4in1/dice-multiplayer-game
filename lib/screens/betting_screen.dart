@@ -314,7 +314,7 @@ class _BettingScreenState extends State<BettingScreen> {
                                     ),
                                   ),
                                 );
-                              }).toList(),
+                              }),
                             ],
                           ),
                         ),
@@ -496,8 +496,9 @@ class _BettingScreenState extends State<BettingScreen> {
                               _authService.currentUserId!,
                             ),
                             builder: (context, diceSnapshot) {
-                              if (!diceSnapshot.hasData)
+                              if (!diceSnapshot.hasData) {
                                 return const SizedBox();
+                              }
                               final myDice = diceSnapshot.data!;
                               return Row(
                                 children: [
@@ -526,7 +527,7 @@ class _BettingScreenState extends State<BettingScreen> {
                   ],
                 ),
               );
-            }).toList(),
+            }),
           ],
         );
       },
