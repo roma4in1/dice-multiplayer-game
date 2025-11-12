@@ -15,15 +15,14 @@ class GameState {
   final List<String> turnOrder;
   final DateTime createdAt;
   final Map<String, dynamic> players;
-  // ✅ ADDED THESE FIELDS FOR HAND EVALUATION
   final Map<String, dynamic> handSubmissions;
   final Map<String, dynamic> handResults;
-  final String? handWinner; // Kept for backwards compatibility
-  final List<String> handWinners; // ✅ NEW: Support multiple winners for ties
+  final String? handWinner;
+  final List<String> handWinners;
   final bool handEvaluationComplete;
   final Map<String, dynamic> publicPlayerData;
-  final List<String>
-  playersReadyToContinue; // ✅ NEW: Track who clicked continue
+  final List<String> playersReadyToContinue;
+  final Map<String, int> currentRoundPoints;
 
   const GameState({
     required this.gameId,
@@ -40,14 +39,14 @@ class GameState {
     this.turnOrder = const [],
     required this.createdAt,
     this.players = const {},
-    // ✅ ADDED THESE DEFAULTS
     this.handSubmissions = const {},
     this.handResults = const {},
     this.handWinner,
-    this.handWinners = const [], // ✅ NEW
+    this.handWinners = const [],
     this.handEvaluationComplete = false,
     this.publicPlayerData = const {},
-    this.playersReadyToContinue = const [], // ✅ NEW
+    this.playersReadyToContinue = const [],
+    this.currentRoundPoints = const {},
   });
 
   bool get isWaiting => status == GameStatus.waiting;
@@ -75,14 +74,14 @@ class GameState {
     List<String>? turnOrder,
     DateTime? createdAt,
     Map<String, dynamic>? players,
-    // ✅ ADDED THESE PARAMETERS
     Map<String, dynamic>? handSubmissions,
     Map<String, dynamic>? handResults,
     String? handWinner,
-    List<String>? handWinners, // ✅ NEW
+    List<String>? handWinners,
     bool? handEvaluationComplete,
     Map<String, dynamic>? publicPlayerData,
-    List<String>? playersReadyToContinue, // ✅ NEW
+    List<String>? playersReadyToContinue,
+    Map<String, int>? currentRoundPoints, // ✅ NEW
   }) {
     return GameState(
       gameId: gameId ?? this.gameId,
@@ -99,16 +98,16 @@ class GameState {
       turnOrder: turnOrder ?? this.turnOrder,
       createdAt: createdAt ?? this.createdAt,
       players: players ?? this.players,
-      // ✅ ADDED THESE FIELDS
       handSubmissions: handSubmissions ?? this.handSubmissions,
       handResults: handResults ?? this.handResults,
       handWinner: handWinner ?? this.handWinner,
-      handWinners: handWinners ?? this.handWinners, // ✅ NEW
+      handWinners: handWinners ?? this.handWinners,
       handEvaluationComplete:
           handEvaluationComplete ?? this.handEvaluationComplete,
       publicPlayerData: publicPlayerData ?? this.publicPlayerData,
       playersReadyToContinue:
-          playersReadyToContinue ?? this.playersReadyToContinue, // ✅ NEW
+          playersReadyToContinue ?? this.playersReadyToContinue,
+      currentRoundPoints: currentRoundPoints ?? this.currentRoundPoints,
     );
   }
 
@@ -128,14 +127,14 @@ class GameState {
       'turnOrder': turnOrder,
       'createdAt': createdAt.toIso8601String(),
       'players': players,
-      // ✅ ADDED THESE FIELDS
       'handSubmissions': handSubmissions,
       'handResults': handResults,
       'handWinner': handWinner,
-      'handWinners': handWinners, // ✅ NEW
+      'handWinners': handWinners,
       'handEvaluationComplete': handEvaluationComplete,
       'publicPlayerData': publicPlayerData,
-      'playersReadyToContinue': playersReadyToContinue, // ✅ NEW
+      'playersReadyToContinue': playersReadyToContinue,
+      'currentRoundPoints': currentRoundPoints,
     };
   }
 
@@ -158,18 +157,20 @@ class GameState {
       turnOrder: List<String>.from(json['turnOrder'] ?? []),
       createdAt: DateTime.parse(json['createdAt'] as String),
       players: json['players'] as Map<String, dynamic>? ?? {},
-      // ✅ ADDED THESE FIELDS
       handSubmissions: json['handSubmissions'] as Map<String, dynamic>? ?? {},
       handResults: json['handResults'] as Map<String, dynamic>? ?? {},
       handWinner: json['handWinner'] as String?,
       handWinners: json['handWinners'] != null
           ? List<String>.from(json['handWinners'])
-          : [], // ✅ NEW
+          : [],
       handEvaluationComplete: json['handEvaluationComplete'] as bool? ?? false,
       publicPlayerData: json['publicPlayerData'] as Map<String, dynamic>? ?? {},
       playersReadyToContinue: json['playersReadyToContinue'] != null
           ? List<String>.from(json['playersReadyToContinue'])
-          : [], // ✅ NEW
+          : [],
+      currentRoundPoints: json['currentRoundPoints'] != null
+          ? Map<String, int>.from(json['currentRoundPoints'])
+          : {},
     );
   }
 }

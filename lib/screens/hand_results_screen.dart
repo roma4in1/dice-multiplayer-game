@@ -6,6 +6,7 @@ import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/dice_widget.dart';
+import 'round_results_screen.dart';
 
 class HandResultsScreen extends StatefulWidget {
   final String gameId;
@@ -19,6 +20,7 @@ class HandResultsScreen extends StatefulWidget {
 class _HandResultsScreenState extends State<HandResultsScreen> {
   int? _initialHand;
   bool _hasNavigatedBack = false;
+  bool _hasNavigatedToRoundResults = false; // ✅ NEW
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +45,40 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
           // ✅ NEW: Store initial hand number on first load
           _initialHand ??= game.currentHand;
 
-          // ✅ NEW: Navigate back when game continues to next hand
+          if (game.status == GameStatus.roundEnd &&
+              !_hasNavigatedToRoundResults) {
+            _hasNavigatedToRoundResults = true;
+            print(
+              '🔍 HAND RESULTS: Status is roundEnd! Navigating to RoundResultsScreen',
+            );
+
+            // ✅ FIXED: Use only ONE navigation method
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                // Extra safety check
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        RoundResultsScreen(gameId: widget.gameId),
+                  ),
+                );
+              }
+            });
+
+            // Return loading state while navigating
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading round results...'),
+                ],
+              ),
+            );
+          }
+
+          // ✅ Navigate back when game continues to next hand
           if (!_hasNavigatedBack &&
               _initialHand != null &&
               (game.currentHand != _initialHand ||
@@ -55,6 +90,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
               }
             });
           }
+
           final players = game.players.entries
               .map((e) => Player.fromJson(e.value))
               .toList();
@@ -141,16 +177,40 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                           fontSize: 20,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        isTie
-                            ? '+${results.firstWhere((r) => r.playerId == winnerIds.first).points} points each'
-                            : '+${results.firstWhere((r) => r.playerId == winnerIds.first).points} points',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
+
+                      const SizedBox(height: 8),
+                      Column(
+                        children: [
+                          Text(
+                            isTie
+                                ? '+${results.firstWhere((r) => r.playerId == winnerIds.first).points} pts each this hand'
+                                : '+${results.firstWhere((r) => r.playerId == winnerIds.first).points} pts this hand',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // ✅ NEW: Show round totals for each winner
+                          ...winnerIds.map((winnerId) {
+                            final winnerPlayer = players.firstWhere(
+                              (p) => p.id == winnerId,
+                            );
+                            final roundTotal =
+                                game.currentRoundPoints[winnerId] ?? 0;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                '${winnerPlayer.name}: $roundTotal round pts (${winnerPlayer.totalPoints} total)',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ],
                       ),
                     ],
                   ],
@@ -226,15 +286,29 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                                   ],
                                 ),
                               ),
-                              Text(
-                                '${result.points} pts',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: isWinner
-                                      ? Colors.amber[700]
-                                      : Colors.grey[700],
-                                ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // ✅ Show actual points won (5 for winner, 0 for loser)
+                                  Text(
+                                    isWinner ? '+${result.points}' : '0',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: isWinner
+                                          ? Colors.amber[700]
+                                          : Colors.grey[600],
+                                    ),
+                                  ),
+                                  // Round total
+                                  Text(
+                                    '${game.currentRoundPoints[result.playerId] ?? 0} round',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

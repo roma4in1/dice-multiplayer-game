@@ -118,7 +118,6 @@ class _GameScreenState extends State<GameScreen> {
                     ),
 
                     const SizedBox(height: 16),
-                    // ✅ ADDED: Score Display
                     StreamBuilder<GameState?>(
                       stream: _firestoreService.getGameStream(widget.gameId),
                       builder: (context, snapshot) {
@@ -151,12 +150,21 @@ class _GameScreenState extends State<GameScreen> {
                                           : FontWeight.normal,
                                     ),
                                   ),
+                                  // ✅ Round points (big and prominent)
                                   Text(
-                                    '${player.totalPoints} pts',
+                                    '${game.currentRoundPoints[player.id] ?? 0}',
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 20,
+                                      fontSize: 24,
                                       fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  // ✅ Total points (smaller, secondary)
+                                  Text(
+                                    '(${player.totalPoints} total)',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
                                     ),
                                   ),
                                 ],
