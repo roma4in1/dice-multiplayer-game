@@ -1,1 +1,37 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"dice-multiplayer-game","appId":"1:657920169419:android:e596b488b3094fac74124e","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"dice-multiplayer-game","configurations":{"android":"1:657920169419:android:e596b488b3094fac74124e","ios":"1:657920169419:ios:ce445e4c3d31a2d574124e","web":"1:657920169419:web:383620c47622ca6274124e"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "dice-multiplayer-game",
+          "appId": "1:657920169419:android:e596b488b3094fac74124e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "dice-multiplayer-game",
+          "configurations": {
+            "android": "1:657920169419:android:e596b488b3094fac74124e",
+            "ios": "1:657920169419:ios:ce445e4c3d31a2d574124e",
+            "web": "1:657920169419:web:383620c47622ca6274124e"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

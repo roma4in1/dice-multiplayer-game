@@ -3,8 +3,6 @@ import '../models/game_state.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
-import '../widgets/player_card.dart';
-import '../widgets/rule_book_button.dart';
 
 class RoundResultsScreen extends StatefulWidget {
   final String gameId;
@@ -16,20 +14,21 @@ class RoundResultsScreen extends StatefulWidget {
 }
 
 class _RoundResultsScreenState extends State<RoundResultsScreen> {
-  final _authService = AuthService();
-  final _firestoreService = FirestoreService();
-  bool _hasNavigatedToNextRound = false;
+  bool _hasNavigated = false;
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = FirestoreService();
+    final authService = AuthService();
+    final myPlayerId = authService.currentUserId!;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Round Results'),
+        title: const Text('Round Complete'),
         automaticallyImplyLeading: false,
-        actions: const [RuleBookButton()],
       ),
       body: StreamBuilder<GameState?>(
-        stream: _firestoreService.getGameStream(widget.gameId),
+        stream: firestoreService.getGameStream(widget.gameId),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
@@ -37,12 +36,42 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
 
           final game = snapshot.data!;
 
-          // Navigate to next round when it starts (rolling phase)
-          if (game.status == GameStatus.rolling && !_hasNavigatedToNextRound) {
-            _hasNavigatedToNextRound = true;
+          // ✅ NEW: Navigate to home when game ends
+          if (game.status == GameStatus.gameEnd && !_hasNavigated) {
+            _hasNavigated = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
-                Navigator.of(context).pop(); // Go back to game screen
+                // Pop all screens and go back to home
+                Navigator.of(context).popUntil((route) => route.isFirst);
+              }
+            });
+
+            // Show loading while navigating
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.emoji_events, size: 80, color: Colors.amber),
+                  SizedBox(height: 20),
+                  Text(
+                    'Game Complete!',
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 12),
+                  Text('Returning to home...'),
+                  SizedBox(height: 20),
+                  CircularProgressIndicator(),
+                ],
+              ),
+            );
+          }
+
+          // Navigate away when round continues to rolling phase
+          if (game.status == GameStatus.rolling && !_hasNavigated) {
+            _hasNavigated = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).pop();
               }
             });
           }
@@ -51,18 +80,39 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
               .map((e) => Player.fromJson(e.value))
               .toList();
 
-          // Sort players by total points (descending)
+          // Sort by total points descending
           players.sort((a, b) => b.totalPoints.compareTo(a.totalPoints));
 
-          final myPlayerId = _authService.currentUserId!;
+          // Get ready status
           final playersReady = game.playersReadyToContinue;
           final iAmReady = playersReady.contains(myPlayerId);
 
+          // Calculate bet results for display
+          final betResults = <String, Map<String, dynamic>>{};
+          for (var player in players) {
+            final roundPoints = game.currentRoundPoints[player.id] ?? 0;
+            final bet = player.currentBet ?? '';
+            final betSuccess = _evaluateBet(bet, roundPoints, game, player.id);
+            final pointsAdded = _calculatePointsAdded(
+              bet,
+              roundPoints,
+              betSuccess,
+            );
+
+            betResults[player.id] = {
+              'roundPoints': roundPoints,
+              'bet': bet,
+              'betSuccess': betSuccess,
+              'pointsAdded': pointsAdded,
+            };
+          }
+
+          // ✅ Check if this is the last round
           final isLastRound = game.currentRound >= game.totalRounds;
 
           return Column(
             children: [
-              // Round Header
+              // Round Complete Header
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
@@ -73,14 +123,16 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Icon(
-                      Icons.emoji_events,
+                    Icon(
+                      isLastRound ? Icons.emoji_events : Icons.flag,
                       size: 60,
                       color: Colors.white,
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Round ${game.currentRound} Complete!',
+                      isLastRound
+                          ? 'Game Complete!'
+                          : 'Round ${game.currentRound} Complete!',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 28,
@@ -90,8 +142,8 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                     const SizedBox(height: 8),
                     Text(
                       isLastRound
-                          ? 'Final Round - Game Over!'
-                          : 'Round ${game.currentRound} of ${game.totalRounds}',
+                          ? 'Final Results'
+                          : 'Round ${game.currentRound + 1} coming up...',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 18,
@@ -101,39 +153,75 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                 ),
               ),
 
-              // Standings with Bet Evaluation
+              // Results List
               Expanded(
                 child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: players.length,
                   itemBuilder: (context, index) {
                     final player = players[index];
+                    final result = betResults[player.id]!;
                     final isMe = player.id == myPlayerId;
-                    final position = index + 1;
+                    final betSuccess = result['betSuccess'] as bool;
 
-                    // Calculate bet results
-                    final roundPoints = game.currentRoundPoints[player.id] ?? 0;
-                    final bet = player.currentBet ?? '';
-                    final betSuccess = _evaluateBet(
-                      bet,
-                      roundPoints,
-                      game,
-                      player.id,
-                    );
-                    final pointsAdded = _calculatePointsAdded(
-                      bet,
-                      roundPoints,
-                      betSuccess,
-                    );
-
-                    return PlayerCard(
-                      player: player,
-                      style: PlayerCardStyle.results,
-                      isMe: isMe,
-                      position: position,
-                      subtitle: Column(
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isMe ? Colors.blue[50] : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isMe ? Colors.blue[300]! : Colors.grey[300]!,
+                          width: isMe ? 3 : 1,
+                        ),
+                      ),
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Player Header
+                          Row(
+                            children: [
+                              Text(
+                                '#${index + 1}',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              CircleAvatar(
+                                backgroundColor: Colors.blue,
+                                radius: 20,
+                                child: Text(
+                                  player.name[0].toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  isMe ? '${player.name} (You)' : player.name,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '${player.totalPoints} pts',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.purple,
+                                ),
+                              ),
+                            ],
+                          ),
+
                           const SizedBox(height: 12),
                           const Divider(),
                           const SizedBox(height: 12),
@@ -142,7 +230,6 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              // Round Points
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -154,7 +241,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                                     ),
                                   ),
                                   Text(
-                                    '$roundPoints pts',
+                                    '${result['roundPoints']} pts',
                                     style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -162,8 +249,6 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                                   ),
                                 ],
                               ),
-
-                              // Bet
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -175,7 +260,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                                     ),
                                   ),
                                   Text(
-                                    _getBetDisplayName(bet),
+                                    _getBetDisplayName(result['bet']),
                                     style: const TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
@@ -183,8 +268,6 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                                   ),
                                 ],
                               ),
-
-                              // Success/Failed Indicator
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 12,
@@ -226,57 +309,36 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
 
                           const SizedBox(height: 12),
 
-                          // Points Calculation Breakdown
+                          // Points Calculation
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: Colors.grey[100],
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      betSuccess
-                                          ? _getSuccessMessage(bet)
-                                          : 'No bonus - base points only',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: Colors.grey[700],
-                                      ),
-                                    ),
-                                    Text(
-                                      '+$pointsAdded pts',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: betSuccess
-                                            ? Colors.green[700]
-                                            : Colors.grey[700],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (betSuccess) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _getCalculationBreakdown(
-                                      bet,
-                                      roundPoints,
-                                      pointsAdded,
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey[600],
-                                      fontStyle: FontStyle.italic,
-                                    ),
+                                Text(
+                                  betSuccess
+                                      ? _getSuccessMessage(result['bet'])
+                                      : 'No bonus applied',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey[700],
                                   ),
-                                ],
+                                ),
+                                Text(
+                                  '+${result['pointsAdded']} pts',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: betSuccess
+                                        ? Colors.green[700]
+                                        : Colors.grey[700],
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -287,7 +349,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                 ),
               ),
 
-              // Ready Status Bar
+              // Player Ready Status
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -312,7 +374,6 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                         style: TextStyle(fontSize: 14, color: Colors.grey[700]),
                       ),
                     ),
-                    // Show which players are ready
                     ...players.map((player) {
                       final isReady = playersReady.contains(player.id);
                       return Padding(
@@ -346,13 +407,15 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                     onPressed: iAmReady
                         ? null
                         : () async {
-                            await _firestoreService.markPlayerReadyToContinue(
+                            await firestoreService.markPlayerReadyToContinue(
                               widget.gameId,
                               myPlayerId,
                             );
                           },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: iAmReady ? Colors.grey : Colors.green,
+                      backgroundColor: iAmReady
+                          ? Colors.grey
+                          : Colors.blue[700],
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       textStyle: const TextStyle(
@@ -371,7 +434,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                           )
                         : Text(
                             isLastRound
-                                ? 'View Final Results'
+                                ? 'Return to Home'
                                 : 'Continue to Next Round',
                           ),
                   ),
@@ -415,7 +478,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
 
     switch (bet) {
       case 'zero':
-        return 30; // Fixed bonus for successful ZERO
+        return 20; // Fixed bonus for successful ZERO
       case 'minimum':
       case 'maximum':
       case 'winner':
@@ -443,28 +506,11 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
   String _getSuccessMessage(String bet) {
     switch (bet) {
       case 'zero':
-        return 'Zero bonus! Fixed +30 pts';
+        return 'Zero bonus! +20 pts';
       case 'minimum':
       case 'maximum':
       case 'winner':
-        return 'Bet success! Points doubled (×2)';
-      default:
-        return '';
-    }
-  }
-
-  String _getCalculationBreakdown(
-    String bet,
-    int roundPoints,
-    int pointsAdded,
-  ) {
-    switch (bet) {
-      case 'zero':
-        return 'Zero bet = fixed 30 point bonus';
-      case 'minimum':
-      case 'maximum':
-      case 'winner':
-        return '$roundPoints pts × 2 multiplier = $pointsAdded pts';
+        return 'Points doubled!';
       default:
         return '';
     }
