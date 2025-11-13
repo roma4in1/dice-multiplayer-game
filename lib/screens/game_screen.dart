@@ -8,7 +8,7 @@ import '../services/firestore_service.dart';
 import '../widgets/dice_widget.dart';
 import '../widgets/rolling_dice_widget.dart';
 import 'betting_screen.dart';
-import 'hand_results_screen.dart'; // ✅ ADDED THIS IMPORT
+import 'hand_results_screen.dart';
 
 class GameScreen extends StatefulWidget {
   final String gameId;
@@ -23,7 +23,7 @@ class _GameScreenState extends State<GameScreen> {
   final _authService = AuthService();
   final _firestoreService = FirestoreService();
   bool _hasNavigatedToBetting = false;
-  bool _hasNavigatedToResults = false; // ✅ ADDED THIS FLAG
+  bool _hasShownHandResults = false;
   bool _isRolling = false;
   final List<int> _selectedDiceIndices = [];
   bool _isSubmittingHand = false;
@@ -51,31 +51,58 @@ class _GameScreenState extends State<GameScreen> {
           if (game.status == GameStatus.betting && !_hasNavigatedToBetting) {
             _hasNavigatedToBetting = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(
-                  builder: (context) => BettingScreen(gameId: widget.gameId),
-                ),
-              );
+              if (mounted) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (context) => BettingScreen(gameId: widget.gameId),
+                  ),
+                );
+              }
             });
           }
 
-          // ✅ ADDED THIS ENTIRE SECTION: Navigate to hand results when evaluation is complete
-          if (game.handEvaluationComplete == true && !_hasNavigatedToResults) {
-            _hasNavigatedToResults = true;
+          // ✅ SHOW HAND RESULTS AS MODAL OVERLAY
+          if (game.status == GameStatus.playing &&
+              game.handEvaluationComplete == true &&
+              !_hasShownHandResults) {
+            _hasShownHandResults = true;
+
+            print('🎮 GAME SCREEN: Showing HandResultsScreen as modal');
+
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              Navigator.of(context)
-                  .push(
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          HandResultsScreen(gameId: widget.gameId),
-                    ),
-                  )
-                  .then((_) {
-                    // Reset the flag when returning from results screen
+              if (mounted) {
+                showGeneralDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  barrierColor: Colors.black.withOpacity(0.8),
+                  transitionDuration: const Duration(milliseconds: 300),
+                  pageBuilder: (context, animation, secondaryAnimation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: HandResultsScreen(gameId: widget.gameId),
+                    );
+                  },
+                ).then((_) {
+                  // Reset when modal closes (when continuing to next hand)
+                  if (mounted) {
                     setState(() {
-                      _hasNavigatedToResults = false;
+                      _hasShownHandResults = false;
                     });
-                  });
+                  }
+                });
+              }
+            });
+          }
+
+          // ✅ RESET flag when hand evaluation is no longer complete
+          // This allows the modal to show again for the next hand
+          if (!game.handEvaluationComplete && _hasShownHandResults) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                setState(() {
+                  _hasShownHandResults = false;
+                });
+              }
             });
           }
 
@@ -116,7 +143,6 @@ class _GameScreenState extends State<GameScreen> {
                         fontSize: 18,
                       ),
                     ),
-
                     const SizedBox(height: 16),
                     StreamBuilder<GameState?>(
                       stream: _firestoreService.getGameStream(widget.gameId),
@@ -150,7 +176,6 @@ class _GameScreenState extends State<GameScreen> {
                                           : FontWeight.normal,
                                     ),
                                   ),
-                                  // ✅ Round points (big and prominent)
                                   Text(
                                     '${game.currentRoundPoints[player.id] ?? 0}',
                                     style: const TextStyle(
@@ -159,7 +184,6 @@ class _GameScreenState extends State<GameScreen> {
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  // ✅ Total points (smaller, secondary)
                                   Text(
                                     '(${player.totalPoints} total)',
                                     style: const TextStyle(
@@ -1185,7 +1209,7 @@ class _GameScreenState extends State<GameScreen> {
                             if (type == 'blue') color = Colors.blue[700];
 
                             return DiceWidget(
-                              value: value, // null for hidden until revealed
+                              value: value,
                               size: 40,
                               color: color,
                             );
@@ -1280,70 +1304,6 @@ class _GameScreenState extends State<GameScreen> {
                 isUsed: data.blueDiceUsed,
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildYourDice(PlayerDice myDice) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue[300]!, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Dice remaining: ${myDice.remainingCount}',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Hidden Dice (Only you can see):',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              DiceWidget(
-                value: myDice.hiddenDice.red.value,
-                size: 60,
-                color: Colors.red[700],
-                isUsed: myDice.usedIndices.contains(0),
-                label: 'RED',
-              ),
-              const SizedBox(width: 12),
-              DiceWidget(
-                value: myDice.hiddenDice.blue.value,
-                size: 60,
-                color: Colors.blue[700],
-                isUsed: myDice.usedIndices.contains(1),
-                label: 'BLUE',
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Visible Dice (Everyone can see):',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: myDice.visibleDice.asMap().entries.map((entry) {
-              final dice = entry.value;
-              return DiceWidget(
-                value: dice.value,
-                size: 55,
-                isUsed: myDice.usedIndices.contains(dice.index),
-              );
-            }).toList(),
           ),
         ],
       ),

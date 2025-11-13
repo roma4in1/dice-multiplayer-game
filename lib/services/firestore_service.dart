@@ -128,10 +128,21 @@ class FirestoreService {
   // Start game (host only)
   Future<void> startGame(String gameId) async {
     try {
+      final gameDoc = await _firestore.collection('games').doc(gameId).get();
+      final gameData = gameDoc.data()!;
+      final players = gameData['players'] as Map<String, dynamic>;
+
+      // Initialize round points for all players
+      final initialRoundPoints = <String, int>{};
+      for (var playerId in players.keys) {
+        initialRoundPoints[playerId] = 0;
+      }
+
       await _firestore.collection('games').doc(gameId).update({
         'status': 'rolling',
         'currentRound': 1,
-        'currentRoundPoints': {},
+        'currentRoundPoints':
+            initialRoundPoints, // ✅ Initialize with all players
         'playersWhoRolled': [],
         'currentlyRolling': null,
       });
@@ -341,6 +352,8 @@ class FirestoreService {
         throw Exception('You already submitted for this hand!');
       }
 
+      final players = gameData['players'] as Map<String, dynamic>;
+
       // Get player's secret dice to get actual values
       final secretDoc = await _firestore
           .collection('games')
@@ -410,13 +423,12 @@ class FirestoreService {
             11 - newUsedIndices.length,
       });
 
-      // Get updated game data
+      // Get updated game data and check if all players submitted
       final updatedGameDoc = await _firestore
           .collection('games')
           .doc(gameId)
           .get();
       final updatedGameData = updatedGameDoc.data()!;
-      final players = updatedGameData['players'] as Map<String, dynamic>;
       final updatedSubmissions =
           updatedGameData['handSubmissions'] as Map<String, dynamic>;
       final turnOrder = List<String>.from(updatedGameData['turnOrder']);
@@ -468,7 +480,7 @@ class FirestoreService {
   ) async {
     print('=== EVALUATING HAND ===');
 
-    // Evaluate each player's hand
+    // Evaluate each player's hand using the public API
     final handResults = <String, HandResult>{};
 
     for (var entry in submissions.entries) {
@@ -477,17 +489,11 @@ class FirestoreService {
       final diceValues = List<int>.from(submission['actualValues']);
       final playerName = players[playerId]['name'] as String;
 
-      final rank = HandEvaluator._determineRank(diceValues);
-      final highCard = diceValues.reduce((a, b) => a > b ? a : b);
-
-      const int fixedPoints = 5;
-      final result = HandResult(
-        playerId: playerId,
-        playerName: playerName,
-        diceValues: diceValues,
-        rank: rank,
-        highCard: highCard,
-        points: fixedPoints,
+      // ✅ Use HandEvaluator.evaluateHand() - the public method
+      final result = HandEvaluator.evaluateHand(
+        playerId,
+        playerName,
+        diceValues,
       );
 
       handResults[playerId] = result;
@@ -499,6 +505,7 @@ class FirestoreService {
       print('  Points: ${result.points}');
     }
 
+    // Determine winners (handles ties)
     final winnerIds = HandEvaluator.determineWinners(handResults);
     final isTie = winnerIds.length > 1;
 
@@ -515,14 +522,14 @@ class FirestoreService {
 
     print('Points per winner: $pointsPerWinner');
 
-    // ✅ NEW: Get current round points
+    // ✅ Get current round points
     final gameDoc = await _firestore.collection('games').doc(gameId).get();
     final gameData = gameDoc.data()!;
     final currentRoundPoints = Map<String, int>.from(
       gameData['currentRoundPoints'] ?? {},
     );
 
-    // ✅ NEW: Update round points for winners
+    // ✅ Update round points for winners ONLY (don't update totalPoints yet)
     for (var winnerId in winnerIds) {
       currentRoundPoints[winnerId] =
           (currentRoundPoints[winnerId] ?? 0) + pointsPerWinner;
@@ -531,7 +538,38 @@ class FirestoreService {
       );
     }
 
-    // Store results
+    // ✅ Update HandResult objects with ACTUAL points awarded (accounting for ties)
+    for (var winnerId in winnerIds) {
+      if (handResults.containsKey(winnerId)) {
+        final result = handResults[winnerId]!;
+        handResults[winnerId] = HandResult(
+          playerId: result.playerId,
+          playerName: result.playerName,
+          diceValues: result.diceValues,
+          rank: result.rank,
+          highCard: result.highCard,
+          points:
+              pointsPerWinner, // ✅ Store actual points awarded (split if tie)
+        );
+      }
+    }
+
+    // ✅ Losers get 0 points
+    for (var entry in handResults.entries) {
+      if (!winnerIds.contains(entry.key)) {
+        final result = entry.value;
+        handResults[entry.key] = HandResult(
+          playerId: result.playerId,
+          playerName: result.playerName,
+          diceValues: result.diceValues,
+          rank: result.rank,
+          highCard: result.highCard,
+          points: 0, // ✅ Losers get 0
+        );
+      }
+    }
+
+    // Store results (without updating totalPoints - that happens in _evaluateRoundBets)
     await _firestore.collection('games').doc(gameId).update({
       'handResults': handResults.map((k, v) => MapEntry(k, v.toJson())),
       'handWinner': winnerIds.first,
@@ -539,26 +577,12 @@ class FirestoreService {
       'handEvaluationComplete': true,
       'currentTurn': null,
       'playersReadyToContinue': [],
-      'currentRoundPoints': currentRoundPoints, // ✅ NEW: Store round points
+      'currentRoundPoints': currentRoundPoints, // ✅ Store round points only
     });
-
-    // Award points to winners' total
-    final updateMap = <String, dynamic>{};
-    for (var winnerId in winnerIds) {
-      final currentPoints = players[winnerId]['totalPoints'] as int? ?? 0;
-      updateMap['players.$winnerId.totalPoints'] =
-          currentPoints + pointsPerWinner;
-      print(
-        'Awarded $pointsPerWinner points to $winnerId (total: ${currentPoints + pointsPerWinner})',
-      );
-    }
-
-    await _firestore.collection('games').doc(gameId).update(updateMap);
 
     print('=== END EVALUATING HAND ===\n');
   }
 
-  // ✅ Mark player as ready to continue
   Future<void> markPlayerReadyToContinue(String gameId, String playerId) async {
     try {
       print('=== MARK PLAYER READY ===');
@@ -569,9 +593,7 @@ class FirestoreService {
         'playersReadyToContinue': FieldValue.arrayUnion([playerId]),
       });
 
-      print('✓ Updated ready list in Firestore');
-
-      // Wait a moment to ensure write completes
+      // Wait for write to complete
       await Future.delayed(const Duration(milliseconds: 100));
 
       // Check if all players are ready
@@ -584,48 +606,38 @@ class FirestoreService {
 
       print('Total players: ${players.length}');
       print('Players ready: ${playersReady.length}');
-      print('Ready list: $playersReady');
 
       // If all players ready, continue the game
       if (playersReady.length == players.length) {
         print('✅ ALL PLAYERS READY!');
 
         final currentHand = gameData['currentHand'] as int;
+        final currentRound = gameData['currentRound'] as int;
+        final totalRounds = gameData['totalRounds'] as int;
         final status = gameData['status'] as String;
 
-        print('🔍 DEBUG: currentHand = $currentHand');
-        print('🔍 DEBUG: status = $status');
         print(
-          '🔍 DEBUG: handEvaluationComplete = ${gameData['handEvaluationComplete']}',
+          'Current: Hand $currentHand, Round $currentRound/$totalRounds, Status: $status',
         );
 
-        // If we're in hand results after hand 3, evaluate bets and show round results
-        if (status != 'roundEnd' && currentHand == 3) {
-          print('End of round - evaluating bets...');
-          await _evaluateRoundBets(gameId);
-
-          await _firestore.collection('games').doc(gameId).update({
-            'status': 'roundEnd',
-            'playersReadyToContinue': [], // Reset for round results screen
-          });
-
-          print('✅ Navigating to round results');
-        }
-        // If we're in round results screen, continue to next round or end game
-        else if (status == 'roundEnd') {
-          print('Continuing from round results...');
+        // Determine what to do based on current state
+        if (status == 'roundEnd') {
+          // Continuing from round results screen
           await _continueFromRoundResults(gameId);
+        } else {
+          // Continuing from hand results screen
+          if (currentHand < 3) {
+            // Continue to next hand
+            await _continueToNextHand(gameId);
+          } else {
+            // End of round - evaluate bets and show round results
+            await _evaluateRoundBets(gameId);
+            await _firestore.collection('games').doc(gameId).update({
+              'status': 'roundEnd',
+              'playersReadyToContinue': [],
+            });
+          }
         }
-        // Otherwise continue to next hand
-        else {
-          print('Continuing to next hand...');
-          await _actualContinueGame(gameId);
-          print('✅ Game continued successfully');
-        }
-      } else {
-        print(
-          '⏳ Waiting for ${players.length - playersReady.length} more player(s)',
-        );
       }
 
       print('=== END MARK PLAYER READY ===\n');
@@ -635,22 +647,56 @@ class FirestoreService {
     }
   }
 
+  Future<void> _continueToNextHand(String gameId) async {
+    print('➡️ Continuing to next hand');
+
+    final gameDoc = await _firestore.collection('games').doc(gameId).get();
+    final gameData = gameDoc.data()!;
+    final currentHand = gameData['currentHand'] as int;
+    final turnOrder = List<String>.from(gameData['turnOrder']);
+    final handWinners = gameData['handWinners'] != null
+        ? List<String>.from(gameData['handWinners'])
+        : [];
+
+    // Reorder turn order so winner goes first
+    final newTurnOrder = handWinners.isNotEmpty
+        ? _reorderTurnOrder(turnOrder, handWinners.first)
+        : turnOrder;
+
+    await _firestore.collection('games').doc(gameId).update({
+      'status': 'playing',
+      'currentHand': currentHand + 1,
+      'handSubmissions': {},
+      'handResults': {},
+      'handWinner': null,
+      'handWinners': [],
+      'handEvaluationComplete': false,
+      'currentTurn': newTurnOrder[0],
+      'turnOrder': newTurnOrder,
+      'playersReadyToContinue': [],
+    });
+
+    print('✅ Successfully continued to hand ${currentHand + 1}');
+  }
+
   /// Continue game from round results screen to next round or game end
   Future<void> _continueFromRoundResults(String gameId) async {
     final gameDoc = await _firestore.collection('games').doc(gameId).get();
     final gameData = gameDoc.data()!;
     final currentRound = gameData['currentRound'] as int;
     final totalRounds = gameData['totalRounds'] as int;
+    final players = gameData['players'] as Map<String, dynamic>;
 
     if (currentRound < totalRounds) {
       // Start next round
       print('➡️ Starting round ${currentRound + 1}');
 
-      await _firestore.collection('games').doc(gameId).update({
+      // Reset players' bets
+      final updates = <String, dynamic>{
         'status': 'rolling',
         'currentRound': currentRound + 1,
         'currentHand': 0,
-        'currentRoundPoints': {}, // ✅ RESET round points!
+        'currentRoundPoints': {},
         'playersWhoRolled': [],
         'currentlyRolling': null,
         'handSubmissions': {},
@@ -660,7 +706,14 @@ class FirestoreService {
         'handEvaluationComplete': false,
         'currentTurn': null,
         'playersReadyToContinue': [],
-      });
+      };
+
+      // Clear all players' bets
+      for (var playerId in players.keys) {
+        updates['players.$playerId.currentBet'] = '';
+      }
+
+      await _firestore.collection('games').doc(gameId).update(updates);
 
       print('✅ Round ${currentRound + 1} started');
     } else {
@@ -671,108 +724,6 @@ class FirestoreService {
         'status': 'gameEnd',
       });
     }
-  }
-
-  // ✅ FIXED: Internal method that actually continues the game with proper round handling
-  Future<void> _actualContinueGame(String gameId) async {
-    try {
-      print('=== ACTUAL CONTINUE GAME ===');
-
-      final gameDoc = await _firestore.collection('games').doc(gameId).get();
-      final gameData = gameDoc.data()!;
-      final currentHand = gameData['currentHand'] as int;
-      final currentRound = gameData['currentRound'] as int;
-      final totalRounds = gameData['totalRounds'] as int;
-      final currentStatus = gameData['status'] as String;
-      final turnOrder = List<String>.from(gameData['turnOrder']);
-      final handWinners = gameData['handWinners'] != null
-          ? List<String>.from(gameData['handWinners'])
-          : (gameData['handWinner'] != null
-                ? [gameData['handWinner'] as String]
-                : []);
-
-      print('Current hand: $currentHand');
-      print('Current round: $currentRound');
-      print('Current status: $currentStatus');
-      print('Total rounds: $totalRounds');
-
-      if (currentHand < 3) {
-        // Continue to next hand (same round)
-        final newTurnOrder = handWinners.isNotEmpty
-            ? _reorderTurnOrder(turnOrder, handWinners.first)
-            : turnOrder;
-
-        print('➡️ Continuing to hand ${currentHand + 1}');
-
-        await _firestore.collection('games').doc(gameId).update({
-          'currentHand': currentHand + 1,
-          'handSubmissions': {},
-          'handResults': {},
-          'handWinner': null,
-          'handWinners': [],
-          'handEvaluationComplete': false,
-          'currentTurn': newTurnOrder[0],
-          'turnOrder': newTurnOrder,
-          'playersReadyToContinue': [],
-        });
-
-        print('✅ Successfully continued to next hand');
-      } else if (currentRound < totalRounds) {
-        // ✅ Check if we're already in roundEnd or need to transition
-        if (currentStatus == 'roundEnd') {
-          // Already showing round results, now start new round
-          print('➡️ Starting round ${currentRound + 1}');
-
-          await _firestore.collection('games').doc(gameId).update({
-            'status': 'rolling',
-            'currentRound': currentRound + 1,
-            'currentHand': 0,
-            'playersWhoRolled': [],
-            'currentlyRolling': null,
-            'handSubmissions': {},
-            'handResults': {},
-            'handWinner': null,
-            'handWinners': [],
-            'handEvaluationComplete': false,
-            'currentTurn': null,
-            'playersReadyToContinue': [],
-            'currentRoundPoints': {}, // ✅ Reset round points
-          });
-
-          print('✅ Successfully started new round');
-        } else {
-          // First transition to roundEnd to show results
-          print('➡️ End of round $currentRound, transitioning to roundEnd');
-
-          await _firestore.collection('games').doc(gameId).update({
-            'status': 'roundEnd',
-            'playersReadyToContinue': [],
-          });
-
-          print('✅ Transitioned to roundEnd status');
-        }
-      } else {
-        // Game over
-        print('🏁 Game over!');
-
-        await _firestore.collection('games').doc(gameId).update({
-          'status': 'gameEnd',
-        });
-
-        print('✅ Game ended');
-      }
-
-      print('=== END ACTUAL CONTINUE GAME ===\n');
-    } catch (e) {
-      print('❌ Error continuing game: $e');
-      rethrow;
-    }
-  }
-
-  // ✅ DEPRECATED: Use markPlayerReadyToContinue instead
-  // Kept for backwards compatibility
-  Future<void> continueGame(String gameId) async {
-    await _actualContinueGame(gameId);
   }
 
   // Reorder turn order so winner goes first
