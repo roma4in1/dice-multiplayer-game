@@ -9,6 +9,7 @@ import '../widgets/dice_widget.dart';
 import '../widgets/rolling_dice_widget.dart';
 import 'betting_screen.dart';
 import 'hand_results_screen.dart';
+import '../widgets/player_card.dart';
 
 class GameScreen extends StatefulWidget {
   final String gameId;
@@ -829,96 +830,23 @@ class _GameScreenState extends State<GameScreen> {
     bool hasRolled,
     bool isRolling,
   ) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isRolling
-            ? Colors.orange[50]
-            : hasRolled
-            ? Colors.green[50]
-            : Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isRolling
-              ? Colors.orange
-              : hasRolled
-              ? Colors.green
-              : Colors.grey[300]!,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: Colors.blue,
-                radius: 16,
-                child: Text(
-                  opponent.name[0].toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      opponent.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      isRolling
-                          ? 'Rolling...'
-                          : hasRolled
-                          ? '✓ Rolled'
-                          : 'Waiting to roll',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isRolling
-                            ? Colors.orange
-                            : hasRolled
-                            ? Colors.green
-                            : Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isRolling)
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (hasRolled)
-                const Icon(Icons.check_circle, color: Colors.green),
-            ],
-          ),
-          if (isRolling) ...[
-            const SizedBox(height: 16),
-            const Text(
-              'Rolling visible dice...',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: List.generate(9, (index) {
-                return const RollingDiceWidget(size: 40);
-              }),
-            ),
-          ] else if (hasRolled)
-            StreamBuilder<Map<String, PublicPlayerData>>(
+    return PlayerCard(
+      player: opponent,
+      style: PlayerCardStyle.rolling,
+      isRolling: isRolling,
+      hasRolled: hasRolled,
+      backgroundColor: isRolling
+          ? Colors.orange[50]
+          : hasRolled
+          ? Colors.green[50]
+          : Colors.grey[100],
+      borderColor: isRolling
+          ? Colors.orange
+          : hasRolled
+          ? Colors.green
+          : Colors.grey[300],
+      subtitle: hasRolled
+          ? StreamBuilder<Map<String, PublicPlayerData>>(
               stream: _firestoreService.getPublicDiceStream(widget.gameId),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) return const SizedBox();
@@ -944,35 +872,11 @@ class _GameScreenState extends State<GameScreen> {
                         return DiceWidget(value: value, size: 40);
                       }).toList(),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Text(
-                          'Hidden: ',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        DiceWidget(
-                          value: null,
-                          size: 35,
-                          color: Colors.red[700],
-                        ),
-                        const SizedBox(width: 6),
-                        DiceWidget(
-                          value: null,
-                          size: 35,
-                          color: Colors.blue[700],
-                        ),
-                      ],
-                    ),
                   ],
                 );
               },
-            ),
-        ],
-      ),
+            )
+          : null,
     );
   }
 

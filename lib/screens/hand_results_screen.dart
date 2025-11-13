@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/game_state.dart';
 import '../models/hand_result.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/dice_widget.dart';
+import '../widgets/player_card.dart';
 import 'round_results_screen.dart';
 
 class HandResultsScreen extends StatefulWidget {
@@ -20,7 +20,7 @@ class HandResultsScreen extends StatefulWidget {
 class _HandResultsScreenState extends State<HandResultsScreen> {
   int? _initialHand;
   bool _hasNavigatedToRoundResults = false;
-  bool _isNavigating = false; // ✅ NEW FLAG
+  bool _isNavigating = false;
 
   @override
   Widget build(BuildContext context) {
@@ -47,27 +47,14 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
             // Store initial hand on first load
             _initialHand ??= game.currentHand;
 
-            // ✅ CRITICAL FIX: Check if we're already navigating
+            // Navigate to round results when round ends
             if (game.status == GameStatus.roundEnd &&
                 !_hasNavigatedToRoundResults &&
                 !_isNavigating) {
-              print(
-                '🎯 FLAG CHECK: _hasNavigatedToRoundResults = $_hasNavigatedToRoundResults',
-              );
-
               _hasNavigatedToRoundResults = true;
-              print(
-                '🎯 FLAG SET: _hasNavigatedToRoundResults = $_hasNavigatedToRoundResults',
-              );
-
-              _isNavigating = true; // Set flag immediately
-
-              print(
-                '🔍 HAND RESULTS: Status is roundEnd! Navigating to RoundResultsScreen',
-              );
+              _isNavigating = true;
 
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                // Only proceed if we're still mounted and flag is set
                 if (!mounted || !_isNavigating) return;
 
                 Navigator.of(context)
@@ -78,7 +65,6 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                       ),
                     )
                     .then((_) {
-                      // Reset flag when navigation completes (though screen will be replaced)
                       if (mounted) {
                         _isNavigating = false;
                       }
@@ -97,7 +83,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
               );
             }
 
-            // Navigate back ONLY when hand advances
+            // Navigate back when hand advances
             if (game.status == GameStatus.playing &&
                 _initialHand != null &&
                 game.currentHand > _initialHand! &&
@@ -127,7 +113,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
             // Sort by comparison (highest rank first)
             results.sort((a, b) => HandEvaluator.compareHands(b, a));
 
-            // ✅ NEW: Get all winners (handles ties)
+            // Get all winners (handles ties)
             final winnerIds = game.handWinners.isNotEmpty
                 ? game.handWinners
                 : (game.handWinner != null ? [game.handWinner!] : <String>[]);
@@ -136,7 +122,6 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
             // Get ready status
             final playersReady = game.playersReadyToContinue;
             final iAmReady = playersReady.contains(myPlayerId);
-            final allReady = playersReady.length == players.length;
 
             return Column(
               children: [
@@ -166,7 +151,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // ✅ NEW: Show all winners for ties
+                      // Show all winners for ties
                       ...winnerIds.map((winnerId) {
                         final winnerResult = results.firstWhere(
                           (r) => r.playerId == winnerId,
@@ -195,7 +180,6 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                             fontSize: 20,
                           ),
                         ),
-
                         const SizedBox(height: 8),
                         Column(
                           children: [
@@ -210,7 +194,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            // ✅ NEW: Show round totals for each winner
+                            // Show round totals for each winner
                             ...winnerIds.map((winnerId) {
                               final winnerPlayer = players.firstWhere(
                                 (p) => p.id == winnerId,
@@ -246,92 +230,22 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                       final result = results[index];
                       final isWinner = winnerIds.contains(result.playerId);
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: isWinner ? Colors.amber[50] : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isWinner
-                                ? Colors.amber[700]!
-                                : Colors.grey[300]!,
-                            width: isWinner ? 3 : 1,
-                          ),
+                      return PlayerCard(
+                        player: players.firstWhere(
+                          (p) => p.id == result.playerId,
                         ),
-                        child: Column(
+                        style: PlayerCardStyle.handResults,
+                        isMe: result.playerId == myPlayerId,
+                        isWinner: isWinner,
+                        subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                if (isWinner)
-                                  Icon(
-                                    Icons.emoji_events,
-                                    color: Colors.amber[700],
-                                    size: 24,
-                                  ),
-                                if (isWinner) const SizedBox(width: 8),
-                                CircleAvatar(
-                                  backgroundColor: Colors.blue,
-                                  radius: 18,
-                                  child: Text(
-                                    result.playerName[0].toUpperCase(),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        result.playerName,
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: isWinner
-                                              ? FontWeight.bold
-                                              : FontWeight.w600,
-                                        ),
-                                      ),
-                                      Text(
-                                        result.rank.displayName,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    // ✅ Show actual points won (5 for winner, 0 for loser)
-                                    Text(
-                                      isWinner ? '+${result.points}' : '0',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: isWinner
-                                            ? Colors.amber[700]
-                                            : Colors.grey[600],
-                                      ),
-                                    ),
-                                    // Round total
-                                    Text(
-                                      '${game.currentRoundPoints[result.playerId] ?? 0} round',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                            Text(
+                              result.rank.displayName,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[600],
+                              ),
                             ),
                             const SizedBox(height: 12),
                             Row(
@@ -339,7 +253,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                               children: result.diceValues.asMap().entries.map((
                                 entry,
                               ) {
-                                final index = entry.key;
+                                final idx = entry.key;
                                 final value = entry.value;
 
                                 // Get the dice type from submissions
@@ -348,8 +262,8 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                                 final diceTypes = submission != null
                                     ? List<String>.from(submission['diceTypes'])
                                     : <String>[];
-                                final type = index < diceTypes.length
-                                    ? diceTypes[index]
+                                final type = idx < diceTypes.length
+                                    ? diceTypes[idx]
                                     : 'visible';
 
                                 Color? color;
@@ -370,12 +284,36 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                             ),
                           ],
                         ),
+                        trailing: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            // Show actual points won
+                            Text(
+                              isWinner ? '+${result.points}' : '0',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isWinner
+                                    ? Colors.amber[700]
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                            // Round total
+                            Text(
+                              '${game.currentRoundPoints[result.playerId] ?? 0} round',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),
                 ),
 
-                // ✅ NEW: Player ready status
+                // Player ready status
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -430,17 +368,15 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                   ),
                 ),
 
-                // ✅ UPDATED: Continue button with ready state
-                // Continue button with ready state
+                // Continue button
                 Container(
                   padding: const EdgeInsets.all(16),
                   child: SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: iAmReady
-                          ? null // Disabled if already clicked
+                          ? null
                           : () async {
-                              // Mark this player as ready
                               await firestoreService.markPlayerReadyToContinue(
                                 widget.gameId,
                                 myPlayerId,
@@ -478,11 +414,9 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                 ),
               ],
             );
-          }, // ✅ Closes StreamBuilder builder
-        ), // ✅ Closes StreamBuilder
-      ), // ✅ Closes Scaffold body
-    ); // ✅ Closes WillPopScope child (Scaffold)
-    // ✅ Now closes WillPopScope
-    // ✅ Now closes Widget build method
+          },
+        ),
+      ),
+    );
   }
 }

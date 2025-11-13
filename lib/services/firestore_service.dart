@@ -765,7 +765,7 @@ class FirestoreService {
 
       if (betSuccess) {
         if (bet == 'zero') {
-          pointsToAdd = 20; // Fixed bonus
+          pointsToAdd = 30; // Fixed bonus
         } else {
           pointsToAdd = roundPoints * 2; // Double points
         }
@@ -802,6 +802,35 @@ class FirestoreService {
         return roundPoints == maxPoints;
       default:
         return false;
+    }
+  }
+
+  // Update player name
+  Future<void> updatePlayerName(
+    String gameId,
+    String playerId,
+    String newName,
+  ) async {
+    try {
+      await _firestore.collection('games').doc(gameId).update({
+        'players.$playerId.name': newName,
+      });
+
+      // Also update in public player data if it exists
+      final gameDoc = await _firestore.collection('games').doc(gameId).get();
+      final gameData = gameDoc.data();
+      if (gameData != null) {
+        final publicData =
+            gameData['publicPlayerData'] as Map<String, dynamic>?;
+        if (publicData != null && publicData.containsKey(playerId)) {
+          await _firestore.collection('games').doc(gameId).update({
+            'publicPlayerData.$playerId.playerName': newName,
+          });
+        }
+      }
+    } catch (e) {
+      print('Error updating player name: $e');
+      rethrow;
     }
   }
 
