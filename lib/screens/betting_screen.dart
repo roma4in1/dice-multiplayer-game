@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/dice_widget.dart';
 import 'game_screen.dart';
+import '../widgets/rule_book_button.dart';
 
 class BettingScreen extends StatefulWidget {
   final String gameId;
@@ -60,6 +61,7 @@ class _BettingScreenState extends State<BettingScreen> {
       appBar: AppBar(
         title: const Text('Place Your Bet'),
         automaticallyImplyLeading: false,
+        actions: const [RuleBookButton()],
       ),
       body: StreamBuilder<GameState?>(
         stream: _firestoreService.getGameStream(widget.gameId),

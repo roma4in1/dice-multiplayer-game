@@ -4,6 +4,7 @@ import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/player_card.dart';
+import '../widgets/rule_book_button.dart';
 
 class RoundResultsScreen extends StatefulWidget {
   final String gameId;
@@ -25,6 +26,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
       appBar: AppBar(
         title: const Text('Round Results'),
         automaticallyImplyLeading: false,
+        actions: const [RuleBookButton()],
       ),
       body: StreamBuilder<GameState?>(
         stream: _firestoreService.getGameStream(widget.gameId),

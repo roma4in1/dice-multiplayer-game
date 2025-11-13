@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../widgets/player_card.dart';
 import 'game_screen.dart';
+import '../widgets/rule_book_button.dart';
 
 class LobbyScreen extends StatefulWidget {
   final String gameId;
@@ -35,13 +36,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
             icon: const Icon(Icons.arrow_back),
             onPressed: _leaveGame,
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.help_outline),
-              tooltip: 'Hand Rankings',
-              onPressed: _showRuleBook,
-            ),
-          ],
+          actions: const [RuleBookButton()],
         ),
         body: StreamBuilder<GameState?>(
           stream: _firestoreService.getGameStream(widget.gameId),

@@ -10,6 +10,7 @@ import '../widgets/rolling_dice_widget.dart';
 import 'betting_screen.dart';
 import 'hand_results_screen.dart';
 import '../widgets/player_card.dart';
+import '../widgets/rule_book_button.dart';
 
 class GameScreen extends StatefulWidget {
   final String gameId;
@@ -35,6 +36,7 @@ class _GameScreenState extends State<GameScreen> {
       appBar: AppBar(
         title: const Text('Game'),
         automaticallyImplyLeading: false,
+        actions: const [RuleBookButton()],
       ),
       body: StreamBuilder<GameState?>(
         stream: _firestoreService.getGameStream(widget.gameId),

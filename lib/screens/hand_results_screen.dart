@@ -7,6 +7,7 @@ import '../services/firestore_service.dart';
 import '../widgets/dice_widget.dart';
 import '../widgets/player_card.dart';
 import 'round_results_screen.dart';
+import '../widgets/rule_book_button.dart';
 
 class HandResultsScreen extends StatefulWidget {
   final String gameId;
@@ -34,6 +35,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
         appBar: AppBar(
           title: const Text('Hand Results'),
           automaticallyImplyLeading: false,
+          actions: const [RuleBookButton()],
         ),
         body: StreamBuilder<GameState?>(
           stream: firestoreService.getGameStream(widget.gameId),
