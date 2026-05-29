@@ -950,7 +950,7 @@ class _GameScreenState extends State<GameScreen> {
                   const SizedBox(height: 16),
 
                   // Game Table - Show submitted hands
-                  _buildGameTable(game.handSubmissions, players),
+                  _buildGameTable(game, players),
 
                   const SizedBox(height: 16),
 
