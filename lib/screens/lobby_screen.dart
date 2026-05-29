@@ -65,13 +65,16 @@ class _LobbyScreenState extends State<LobbyScreen> {
             }
 
             final players = game.players.entries
-                .map((e) => Player.fromJson(e.value))
+                .map((e) => Player.fromJson(
+                    Map<String, dynamic>.from(e.value as Map)))
                 .toList();
-            final isHost = game.hostId == _authService.currentUserId;
-            final currentPlayer = players.firstWhere(
-              (p) => p.id == _authService.currentUserId,
-              orElse: () => players.first,
+            final myId = _authService.currentUserId!;
+            final isHost = game.hostId == myId;
+            final currentPlayer = players.cast<Player?>().firstWhere(
+              (p) => p!.id == myId,
+              orElse: () => null,
             );
+            final iAmReady = currentPlayer?.isReady ?? false;
 
             // Check if all non-host players are ready
             final nonHostPlayers = players.where((p) => !p.isHost).toList();
@@ -191,20 +194,21 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           width: double.infinity,
                           height: 50,
                           child: ElevatedButton(
-                            onPressed: () {
-                              _firestoreService.setPlayerReady(
-                                widget.gameId,
-                                _authService.currentUserId!,
-                                !currentPlayer.isReady,
-                              );
-                            },
+                            onPressed: currentPlayer == null
+                                ? null
+                                : () {
+                                    _firestoreService.setPlayerReady(
+                                      widget.gameId,
+                                      myId,
+                                      !iAmReady,
+                                    );
+                                  },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: currentPlayer.isReady
-                                  ? Colors.orange
-                                  : Colors.green,
+                              backgroundColor:
+                                  iAmReady ? Colors.orange : Colors.green,
                             ),
                             child: Text(
-                              currentPlayer.isReady ? 'Not Ready' : 'Ready',
+                              iAmReady ? 'Not Ready' : 'Ready',
                               style: const TextStyle(fontSize: 18),
                             ),
                           ),
