@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../app_theme.dart';
 import '../models/game_state.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
@@ -24,10 +25,10 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        await _leaveGame();
-        return true;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (!didPop) await _leaveGame();
       },
       child: Scaffold(
         appBar: AppBar(
@@ -85,23 +86,25 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blue[600]!, Colors.purple[600]!],
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppTheme.navyLight, AppTheme.navy],
                     ),
                     borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: AppTheme.gold.withValues(alpha: 0.3), width: 1),
                   ),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Join Code:',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 16,
-                            ),
-                          ),
+                          Text('Join Code:',
+                              style: AppTheme.heading(
+                                  size: 14,
+                                  color: Colors.white60,
+                                  weight: FontWeight.w400)),
                           GestureDetector(
                             onTap: () {
                               Clipboard.setData(
@@ -120,26 +123,21 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                gradient: const LinearGradient(
+                                  colors: [AppTheme.goldLight, AppTheme.gold],
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 children: [
                                   Text(
                                     game.joinCode,
-                                    style: TextStyle(
-                                      color: Colors.purple[700],
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 2,
-                                    ),
+                                    style: AppTheme.display(
+                                        size: 22, color: AppTheme.navy),
                                   ),
                                   const SizedBox(width: 8),
-                                  Icon(
-                                    Icons.copy,
-                                    color: Colors.purple[700],
-                                    size: 20,
-                                  ),
+                                  const Icon(Icons.copy,
+                                      color: AppTheme.navy, size: 18),
                                 ],
                               ),
                             ),
@@ -257,22 +255,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white24),
       ),
       child: Column(
         children: [
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
+          Text(label,
+              style: AppTheme.heading(
+                  size: 11, color: Colors.white60, weight: FontWeight.w400)),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppTheme.display(size: 18, color: Colors.white),
           ),
         ],
       ),
@@ -339,204 +333,36 @@ class _LobbyScreenState extends State<LobbyScreen> {
     );
   }
 
-  void _showRuleBook() {
-    showDialog(
+  Future<void> _leaveGame() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.emoji_events, color: Colors.amber[700]),
-            const SizedBox(width: 8),
-            const Text('Hand Rankings'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'From strongest to weakest:',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Triple
-              _buildRankCard(
-                rank: '1. Triple',
-                description: 'All three dice show the same value',
-                examples: ['6-6-6', '5-5-5', '1-1-1'],
-                color: Colors.purple,
-                icon: Icons.filter_3,
-              ),
-
-              const SizedBox(height: 12),
-
-              // Straight
-              _buildRankCard(
-                rank: '2. Straight',
-                description: 'Three consecutive values',
-                examples: ['4-5-6', '3-4-5', '1-2-3'],
-                color: Colors.blue,
-                icon: Icons.trending_up,
-              ),
-
-              const SizedBox(height: 12),
-
-              // Pair
-              _buildRankCard(
-                rank: '3. Pair',
-                description: 'Two dice show the same value',
-                examples: ['6-6-3', '4-4-1', '2-2-5'],
-                color: Colors.green,
-                icon: Icons.filter_2,
-              ),
-
-              const SizedBox(height: 12),
-
-              // High Card
-              _buildRankCard(
-                rank: '4. High Card',
-                description: 'No matching or consecutive values',
-                examples: ['6-4-1', '5-3-1', '6-2-1'],
-                color: Colors.orange,
-                icon: Icons.filter_1,
-              ),
-
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-
-              // Tiebreaker rules
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text(
-                      'Tiebreaker Rules:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      '• Same rank? Compare highest die value\n'
-                      '• Still tied? Compare sum of all dice\n'
-                      '• Still tied? Players split the points',
-                      style: TextStyle(fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Points info
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Each hand is worth 5 points\nWinner takes all (or split if tied)',
-                        style: TextStyle(fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.cardIvory,
+        title: Text('Leave Game?',
+            style: AppTheme.heading(color: AppTheme.navy)),
+        content: const Text(
+          'You will be removed from the lobby. This cannot be undone.',
+          style: TextStyle(fontSize: 15),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Got it!'),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.danger,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Leave'),
           ),
         ],
       ),
     );
-  }
 
-  Widget _buildRankCard({
-    required String rank,
-    required String description,
-    required List<String> examples,
-    required Color color,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, color: color, size: 24),
-              const SizedBox(width: 8),
-              Text(
-                rank,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(description, style: const TextStyle(fontSize: 13)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: examples.map((example) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: color.withOpacity(0.3)),
-                ),
-                child: Text(
-                  example,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
+    if (confirmed != true) return;
 
-  Future<void> _leaveGame() async {
     await _firestoreService.leaveGame(
       widget.gameId,
       _authService.currentUserId!,
