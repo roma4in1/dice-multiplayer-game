@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'app_theme.dart';
 import 'services/auth_service.dart';
 import 'screens/home_screen.dart';
 import 'routes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
   runApp(const MyApp());
 }
 
@@ -22,10 +20,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Dice Game',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.purple),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.theme,
       onGenerateRoute: AppRoutes.generateRoute,
       home: const AuthWrapper(),
     );

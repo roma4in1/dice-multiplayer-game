@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_theme.dart';
 import '../models/game_state.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
@@ -16,8 +17,8 @@ class GameEndScreen extends StatelessWidget {
     final authService = AuthService();
     final myPlayerId = authService.currentUserId!;
 
-    return WillPopScope(
-      onWillPop: () async => false,
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Game Over'),
@@ -102,7 +103,7 @@ class GameEndScreen extends StatelessWidget {
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
+                            color: Colors.white.withValues(alpha:0.2),
                             borderRadius: BorderRadius.circular(30),
                           ),
                           child: const Text(
@@ -157,7 +158,7 @@ class GameEndScreen extends StatelessWidget {
                               ? [
                                   BoxShadow(
                                     color: (medalColor ?? Colors.grey)
-                                        .withValues(alpha: 0.3),
+                                        .withValues(alpha:0.3),
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
                                   ),

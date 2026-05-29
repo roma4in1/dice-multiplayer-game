@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../app_theme.dart';
 import '../models/game_state.dart';
 import '../models/dice_info.dart';
 import '../models/player.dart';
@@ -63,13 +65,11 @@ class _GameScreenState extends State<GameScreen> {
             });
           }
 
-          // ✅ SHOW HAND RESULTS AS MODAL OVERLAY
+          // Show hand results as modal overlay
           if (game.status == GameStatus.playing &&
               game.handEvaluationComplete == true &&
               !_hasShownHandResults) {
             _hasShownHandResults = true;
-
-            print('🎮 GAME SCREEN: Showing HandResultsScreen as modal');
 
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
@@ -85,7 +85,6 @@ class _GameScreenState extends State<GameScreen> {
                     );
                   },
                 ).then((_) {
-                  // Reset when modal closes (when continuing to next hand)
                   if (mounted) {
                     setState(() {
                       _hasShownHandResults = false;
@@ -96,8 +95,7 @@ class _GameScreenState extends State<GameScreen> {
             });
           }
 
-          // ✅ RESET flag when hand evaluation is no longer complete
-          // This allows the modal to show again for the next hand
+          // Reset flag when hand evaluation is no longer complete
           if (!game.handEvaluationComplete && _hasShownHandResults) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) {
@@ -118,69 +116,66 @@ class _GameScreenState extends State<GameScreen> {
 
           return Column(
             children: [
-              // Game Status Header
+              // ── Game Status Header ───────────────────────────────────────
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.purple[700]!, Colors.blue[700]!],
-                  ),
-                ),
+                decoration: const BoxDecoration(gradient: AppTheme.navyGradient),
                 child: Column(
                   children: [
                     Text(
                       'Round ${game.currentRound} of ${game.totalRounds}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: AppTheme.display(size: 26),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       'Hand ${game.currentHand} of 3',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 18,
-                      ),
+                      style: AppTheme.heading(size: 14, color: Colors.white60),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: AppTheme.navyPanel(radius: 10),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: players.map((player) {
-                          final isMe =
-                              player.id == _authService.currentUserId;
+                          final isMe = player.id == _authService.currentUserId;
+                          final score =
+                              game.currentRoundPoints[player.id] ?? 0;
                           return Column(
                             children: [
                               Text(
                                 isMe ? 'You' : player.name,
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
+                                  color: isMe ? AppTheme.gold : Colors.white70,
+                                  fontSize: 13,
                                   fontWeight: isMe
                                       ? FontWeight.bold
                                       : FontWeight.normal,
                                 ),
                               ),
-                              Text(
-                                '${game.currentRoundPoints[player.id] ?? 0}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
+                              const SizedBox(height: 2),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 400),
+                                transitionBuilder: (child, anim) =>
+                                    ScaleTransition(
+                                  scale: anim,
+                                  child:
+                                      FadeTransition(opacity: anim, child: child),
+                                ),
+                                child: Text(
+                                  '$score',
+                                  key: ValueKey(
+                                      'score_${player.id}_$score'),
+                                  style: AppTheme.display(
+                                      size: 28, color: AppTheme.gold),
                                 ),
                               ),
                               Text(
                                 '(${player.totalPoints} total)',
                                 style: const TextStyle(
-                                  color: Colors.white70,
+                                  color: Colors.white54,
                                   fontSize: 11,
                                 ),
                               ),
@@ -193,18 +188,22 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
 
-              // Game Content
+              // ── Game Content on felt ─────────────────────────────────────
               Expanded(
-                child: isRollingPhase
-                    ? _buildRollingPhaseContent(
-                        game,
-                        players,
-                        currentlyRolling,
-                        playersWhoRolled,
-                        haveIRolled,
-                        isMyTurnToRoll,
-                      )
-                    : _buildPlayingPhaseContent(game, players),
+                child: DecoratedBox(
+                  decoration:
+                      const BoxDecoration(gradient: AppTheme.feltGradient),
+                  child: isRollingPhase
+                      ? _buildRollingPhaseContent(
+                          game,
+                          players,
+                          currentlyRolling,
+                          playersWhoRolled,
+                          haveIRolled,
+                          isMyTurnToRoll,
+                        )
+                      : _buildPlayingPhaseContent(game, players),
+                ),
               ),
             ],
           );
@@ -221,237 +220,237 @@ class _GameScreenState extends State<GameScreen> {
     final myPlayerId = _authService.currentUserId!;
     final alreadySubmitted = game.handSubmissions.containsKey(myPlayerId);
 
-    return Builder(
-      builder: (context) {
-        if (alreadySubmitted) {
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.green[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green[300]!, width: 2),
+    if (alreadySubmitted) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: AppTheme.card(
+          color: AppTheme.success.withValues(alpha: 0.15),
+          borderColor: AppTheme.success.withValues(alpha: 0.5),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.check_circle, size: 60, color: Colors.green[300]),
+            const SizedBox(height: 12),
+            const Text(
+              'Hand Submitted!',
+              style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
             ),
-            child: Column(
-              children: [
-                Icon(Icons.check_circle, size: 60, color: Colors.green[700]),
-                const SizedBox(height: 12),
-                const Text(
-                  'Hand Submitted!',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Waiting for other players...',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-              ],
+            const SizedBox(height: 8),
+            const Text(
+              'Waiting for other players...',
+              style: TextStyle(fontSize: 16, color: Colors.white60),
             ),
-          );
-        }
+          ],
+        ),
+      );
+    }
 
-        if (!isMyTurn) {
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
+    if (!isMyTurn) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: AppTheme.card(
+          color: Colors.white.withValues(alpha: 0.07),
+          borderColor: Colors.white24,
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.schedule, size: 50, color: Colors.white38),
+            const SizedBox(height: 12),
+            const Text(
+              'Not Your Turn',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white70,
+              ),
             ),
-            child: Column(
-              children: [
-                Icon(Icons.schedule, size: 50, color: Colors.grey[400]),
-                const SizedBox(height: 12),
-                const Text(
-                  'Not Your Turn',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Wait for other players to play',
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                _buildYourDicePreview(myDice),
-              ],
+            const SizedBox(height: 8),
+            const Text(
+              'Wait for other players to play',
+              style: TextStyle(fontSize: 14, color: Colors.white54),
             ),
-          );
-        }
+            const SizedBox(height: 16),
+            _buildYourDicePreview(myDice),
+          ],
+        ),
+      );
+    }
 
-        final availableDice = myDice.allDice
-            .where((d) => !myDice.usedIndices.contains(d.index))
-            .toList();
-
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.green[50],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.green[300]!, width: 3),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.gold.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.gold, width: 2.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.play_arrow, color: Colors.green[700]),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Select 3 dice (${_selectedDiceIndices.length}/3)',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_selectedDiceIndices.isNotEmpty)
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectedDiceIndices.clear();
-                        });
-                      },
-                      child: const Text('Clear'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Hidden Dice Section
-              const Text(
-                'Hidden Dice:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  if (!myDice.usedIndices.contains(0))
-                    GestureDetector(
-                      onTap: () => _toggleDiceSelection(0),
-                      child: DiceWidget(
-                        value: myDice.hiddenDice.red.value,
-                        size: 60,
-                        color: Colors.red[700],
-                        label: 'RED',
-                        isSelected: _selectedDiceIndices.contains(0),
-                      ),
-                    )
-                  else
-                    DiceWidget(
-                      value: myDice.hiddenDice.red.value,
-                      size: 60,
-                      color: Colors.red[700],
-                      label: 'RED',
-                      isUsed: true,
-                    ),
-                  const SizedBox(width: 12),
-                  if (!myDice.usedIndices.contains(1))
-                    GestureDetector(
-                      onTap: () => _toggleDiceSelection(1),
-                      child: DiceWidget(
-                        value: myDice.hiddenDice.blue.value,
-                        size: 60,
-                        color: Colors.blue[700],
-                        label: 'BLUE',
-                        isSelected: _selectedDiceIndices.contains(1),
-                      ),
-                    )
-                  else
-                    DiceWidget(
-                      value: myDice.hiddenDice.blue.value,
-                      size: 60,
-                      color: Colors.blue[700],
-                      label: 'BLUE',
-                      isUsed: true,
-                    ),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-
-              // Visible Dice Section
-              const Text(
-                'Visible Dice:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: myDice.visibleDice.map((dice) {
-                  final isUsed = myDice.usedIndices.contains(dice.index);
-                  final isSelected = _selectedDiceIndices.contains(dice.index);
-
-                  return GestureDetector(
-                    onTap: isUsed
-                        ? null
-                        : () => _toggleDiceSelection(dice.index),
-                    child: DiceWidget(
-                      value: dice.value,
-                      size: 55,
-                      isUsed: isUsed,
-                      isSelected: isSelected,
-                    ),
-                  );
-                }).toList(),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Submit Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed:
-                      _selectedDiceIndices.length == 3 && !_isSubmittingHand
-                      ? () => _submitHand()
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  const Icon(Icons.play_arrow, color: AppTheme.gold),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Select 3 dice (${_selectedDiceIndices.length}/3)',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                  child: _isSubmittingHand
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: const [
-                            Icon(Icons.send, size: 24),
-                            SizedBox(width: 12),
-                            Text(
-                              'Play Hand',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
+                ],
+              ),
+              if (_selectedDiceIndices.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedDiceIndices.clear();
+                    });
+                  },
+                  child: const Text('Clear',
+                      style: TextStyle(color: Colors.white70)),
                 ),
-              ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 16),
+
+          // Hidden Dice Section
+          const Text(
+            'Hidden Dice:',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (!myDice.usedIndices.contains(0))
+                GestureDetector(
+                  onTap: () => _toggleDiceSelection(0),
+                  child: DiceWidget(
+                    value: myDice.hiddenDice.red.value,
+                    size: 60,
+                    color: AppTheme.diceRed,
+                    label: 'RED',
+                    isSelected: _selectedDiceIndices.contains(0),
+                  ),
+                )
+              else
+                DiceWidget(
+                  value: myDice.hiddenDice.red.value,
+                  size: 60,
+                  color: AppTheme.diceRed,
+                  label: 'RED',
+                  isUsed: true,
+                ),
+              const SizedBox(width: 12),
+              if (!myDice.usedIndices.contains(1))
+                GestureDetector(
+                  onTap: () => _toggleDiceSelection(1),
+                  child: DiceWidget(
+                    value: myDice.hiddenDice.blue.value,
+                    size: 60,
+                    color: AppTheme.diceBlue,
+                    label: 'BLUE',
+                    isSelected: _selectedDiceIndices.contains(1),
+                  ),
+                )
+              else
+                DiceWidget(
+                  value: myDice.hiddenDice.blue.value,
+                  size: 60,
+                  color: AppTheme.diceBlue,
+                  label: 'BLUE',
+                  isUsed: true,
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Visible Dice Section
+          const Text(
+            'Visible Dice:',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: myDice.visibleDice.map((dice) {
+              final isUsed = myDice.usedIndices.contains(dice.index);
+              final isSelected = _selectedDiceIndices.contains(dice.index);
+
+              return GestureDetector(
+                onTap: isUsed ? null : () => _toggleDiceSelection(dice.index),
+                child: DiceWidget(
+                  value: dice.value,
+                  size: 55,
+                  isUsed: isUsed,
+                  isSelected: isSelected,
+                ),
+              );
+            }).toList(),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Submit Button
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed:
+                  _selectedDiceIndices.length == 3 && !_isSubmittingHand
+                  ? () => _submitHand()
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.gold,
+                foregroundColor: AppTheme.navy,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: _isSubmittingHand
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: AppTheme.navy,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.send, size: 24),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Play Hand',
+                          style: AppTheme.heading(
+                              size: 18,
+                              color: AppTheme.navy,
+                              weight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -522,21 +521,17 @@ class _GameScreenState extends State<GameScreen> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
-            color: Colors.blue[50],
+            color: Colors.black.withValues(alpha: 0.25),
             child: Column(
               children: [
                 Text(
                   'Rolling Phase',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[900],
-                  ),
+                  style: AppTheme.heading(size: 18),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   '${playersWhoRolled.length} / ${players.length} players have rolled',
-                  style: const TextStyle(fontSize: 16),
+                  style: const TextStyle(fontSize: 15, color: Colors.white70),
                 ),
                 if (currentlyRolling != null) ...[
                   const SizedBox(height: 8),
@@ -546,7 +541,8 @@ class _GameScreenState extends State<GameScreen> {
                       const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
                       ),
                       const SizedBox(width: 8),
                       Text(
@@ -556,6 +552,7 @@ class _GameScreenState extends State<GameScreen> {
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
+                          color: Colors.white,
                         ),
                       ),
                     ],
@@ -572,10 +569,12 @@ class _GameScreenState extends State<GameScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: isMyTurnToRoll ? Colors.green[50] : Colors.grey[100],
+              color: isMyTurnToRoll
+                  ? AppTheme.gold.withValues(alpha: 0.12)
+                  : Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isMyTurnToRoll ? Colors.green : Colors.grey[300]!,
+                color: isMyTurnToRoll ? AppTheme.gold : Colors.white24,
                 width: 2,
               ),
             ),
@@ -584,12 +583,12 @@ class _GameScreenState extends State<GameScreen> {
                 Row(
                   children: [
                     CircleAvatar(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: AppTheme.navyLight,
                       radius: 20,
                       child: Text(
                         myPlayer.name[0].toUpperCase(),
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: AppTheme.gold,
                           fontWeight: FontWeight.bold,
                           fontSize: 18,
                         ),
@@ -604,6 +603,7 @@ class _GameScreenState extends State<GameScreen> {
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                         Text(
@@ -615,10 +615,10 @@ class _GameScreenState extends State<GameScreen> {
                           style: TextStyle(
                             fontSize: 14,
                             color: haveIRolled
-                                ? Colors.green
+                                ? Colors.greenAccent
                                 : currentlyRolling == _authService.currentUserId
                                 ? Colors.orange
-                                : Colors.grey[600],
+                                : Colors.white54,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -646,7 +646,8 @@ class _GameScreenState extends State<GameScreen> {
                               }
                             },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
+                        backgroundColor: AppTheme.gold,
+                        foregroundColor: AppTheme.navy,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -656,21 +657,21 @@ class _GameScreenState extends State<GameScreen> {
                               width: 24,
                               height: 24,
                               child: CircularProgressIndicator(
-                                color: Colors.white,
+                                color: AppTheme.navy,
                                 strokeWidth: 2,
                               ),
                             )
                           : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.casino, size: 28),
-                                SizedBox(width: 12),
+                              children: [
+                                const Icon(Icons.casino, size: 28),
+                                const SizedBox(width: 12),
                                 Text(
                                   'Roll My Dice',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: AppTheme.heading(
+                                      size: 18,
+                                      color: AppTheme.navy,
+                                      weight: FontWeight.bold),
                                 ),
                               ],
                             ),
@@ -686,7 +687,8 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
-                        return const CircularProgressIndicator();
+                        return const CircularProgressIndicator(
+                            color: AppTheme.gold);
                       }
                       return _buildYourDicePreview(snapshot.data!);
                     },
@@ -696,7 +698,7 @@ class _GameScreenState extends State<GameScreen> {
                     'Waiting for other player to roll...',
                     style: TextStyle(
                       fontSize: 16,
-                      color: Colors.grey,
+                      color: Colors.white54,
                       fontStyle: FontStyle.italic,
                     ),
                   ),
@@ -708,10 +710,7 @@ class _GameScreenState extends State<GameScreen> {
 
           // Opponents Section
           if (opponents.isNotEmpty) ...[
-            const Text(
-              'Other Players',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
+            Text('Other Players', style: AppTheme.heading(size: 18)),
             const SizedBox(height: 12),
             ...opponents.map((opponent) {
               final hasRolled = playersWhoRolled.contains(opponent.id);
@@ -734,16 +733,16 @@ class _GameScreenState extends State<GameScreen> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: Colors.orange,
+            color: AppTheme.gold,
           ),
         ),
         const SizedBox(height: 16),
-        Row(
+        const Row(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            RollingDiceWidget(size: 60, color: Colors.red),
+          children: [
+            RollingDiceWidget(size: 60, color: AppTheme.diceRed),
             SizedBox(width: 12),
-            RollingDiceWidget(size: 60, color: Colors.blue),
+            RollingDiceWidget(size: 60, color: AppTheme.diceBlue),
           ],
         ),
         const SizedBox(height: 12),
@@ -765,7 +764,10 @@ class _GameScreenState extends State<GameScreen> {
       children: [
         const Text(
           'Your Dice:',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.white70),
         ),
         const SizedBox(height: 8),
         Row(
@@ -773,14 +775,14 @@ class _GameScreenState extends State<GameScreen> {
             DiceWidget(
               value: myDice.hiddenDice.red.value,
               size: 40,
-              color: Colors.red[700],
+              color: AppTheme.diceRed,
               isUsed: myDice.usedIndices.contains(0),
             ),
             const SizedBox(width: 6),
             DiceWidget(
               value: myDice.hiddenDice.blue.value,
               size: 40,
-              color: Colors.blue[700],
+              color: AppTheme.diceBlue,
               isUsed: myDice.usedIndices.contains(1),
             ),
           ],
@@ -812,15 +814,15 @@ class _GameScreenState extends State<GameScreen> {
       isRolling: isRolling,
       hasRolled: hasRolled,
       backgroundColor: isRolling
-          ? Colors.orange[50]
+          ? Colors.orange.withValues(alpha: 0.15)
           : hasRolled
-          ? Colors.green[50]
-          : Colors.grey[100],
+          ? Colors.green.withValues(alpha: 0.12)
+          : Colors.white.withValues(alpha: 0.07),
       borderColor: isRolling
           ? Colors.orange
           : hasRolled
-          ? Colors.green
-          : Colors.grey[300],
+          ? Colors.greenAccent
+          : Colors.white24,
       subtitle: hasRolled
           ? StreamBuilder<Map<String, PublicPlayerData>>(
               stream: _firestoreService.getPublicDiceStream(widget.gameId),
@@ -838,6 +840,7 @@ class _GameScreenState extends State<GameScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w500,
+                        color: Colors.white70,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -872,9 +875,10 @@ class _GameScreenState extends State<GameScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(),
+                CircularProgressIndicator(color: AppTheme.gold),
                 SizedBox(height: 20),
-                Text('Loading dice...'),
+                Text('Loading dice...',
+                    style: TextStyle(color: Colors.white70)),
               ],
             ),
           );
@@ -886,54 +890,62 @@ class _GameScreenState extends State<GameScreen> {
           stream: _firestoreService.getPublicDiceStream(widget.gameId),
           builder: (context, publicSnapshot) {
             if (!publicSnapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(
+                  child: CircularProgressIndicator(color: AppTheme.gold));
             }
 
             final publicData = publicSnapshot.data!;
-            final opponents = players.where((p) => p.id != myPlayerId).toList();
+            final opponents =
+                players.where((p) => p.id != myPlayerId).toList();
+
+            // Turn indicator widget
+            Widget turnIndicator = Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: isMyTurn
+                    ? AppTheme.gold.withValues(alpha: 0.15)
+                    : Colors.black.withValues(alpha: 0.2),
+                border: Border(
+                  bottom: BorderSide(
+                    color: isMyTurn ? AppTheme.gold : Colors.white30,
+                    width: 2,
+                  ),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isMyTurn ? Icons.play_arrow : Icons.schedule,
+                    color: isMyTurn ? AppTheme.gold : Colors.white54,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    isMyTurn
+                        ? '🎯 YOUR TURN — Select 3 dice!'
+                        : '⏳ ${currentTurnPlayer.name}\'s turn...',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: isMyTurn ? AppTheme.gold : Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
+            );
+
+            if (isMyTurn) {
+              turnIndicator = turnIndicator
+                  .animate(onPlay: (c) => c.repeat(reverse: true))
+                  .fade(begin: 0.75, end: 1.0, duration: 900.ms);
+            }
 
             return SingleChildScrollView(
               child: Column(
                 children: [
-                  // Turn indicator
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: isMyTurn ? Colors.green[50] : Colors.blue[50],
-                      border: Border(
-                        bottom: BorderSide(
-                          color: isMyTurn ? Colors.green : Colors.blue,
-                          width: 3,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          isMyTurn ? Icons.play_arrow : Icons.schedule,
-                          color: isMyTurn
-                              ? Colors.green[700]
-                              : Colors.blue[700],
-                          size: 24,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          isMyTurn
-                              ? '🎯 YOUR TURN - Select 3 dice!'
-                              : '⏳ ${currentTurnPlayer.name}\'s turn...',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: isMyTurn
-                                ? Colors.green[900]
-                                : Colors.blue[900],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  turnIndicator,
 
                   const SizedBox(height: 16),
 
@@ -944,13 +956,7 @@ class _GameScreenState extends State<GameScreen> {
 
                   // Opponents Section
                   if (opponents.isNotEmpty) ...[
-                    const Text(
-                      'Opponents',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    Text('Opponents', style: AppTheme.heading(size: 18)),
                     const SizedBox(height: 12),
                     ...opponents.map((opponent) {
                       final opponentData = publicData[opponent.id];
@@ -960,14 +966,12 @@ class _GameScreenState extends State<GameScreen> {
                   ],
 
                   const SizedBox(height: 24),
-                  const Divider(thickness: 2),
+                  const Divider(color: Colors.white24, thickness: 1),
                   const SizedBox(height: 16),
 
                   // Your Dice Section with Selection
-                  const Text(
-                    'Your Dice',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
+                  Text('Your Dice',
+                      style: AppTheme.display(size: 20, color: Colors.white)),
                   const SizedBox(height: 16),
                   _buildYourDiceWithSelection(myDice, isMyTurn, game),
                   const SizedBox(height: 20),
@@ -980,115 +984,112 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _buildGameTable(Map<String, dynamic> submissions, List<Player> players) {
-    if (submissions.isEmpty) {
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[300]!),
-            ),
-            child: const Center(
-              child: Text(
-                'No hands played yet',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
-          );
-        }
+  Widget _buildGameTable(GameState game, List<Player> players) {
+    final submissions = game.handSubmissions;
 
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.amber[50],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.amber[300]!, width: 2),
+    if (submissions.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: const Center(
+          child: Text(
+            'No hands played yet',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white38,
+              fontStyle: FontStyle.italic,
+            ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.navyPanel(radius: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
+              const Icon(Icons.table_chart, color: AppTheme.gold, size: 20),
+              const SizedBox(width: 8),
+              Text('Played Hands',
+                  style: AppTheme.heading(size: 16, color: Colors.white)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...submissions.entries.map((entry) {
+            final playerId = entry.key;
+            final submission = entry.value as Map<String, dynamic>;
+            final player = players.firstWhere((p) => p.id == playerId);
+            final diceValues = List<dynamic>.from(submission['diceValues']);
+            final diceTypes = List<String>.from(submission['diceTypes']);
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
                 children: [
-                  Icon(Icons.table_chart, color: Colors.amber[700]),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Played Hands',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  CircleAvatar(
+                    backgroundColor: AppTheme.navyLight,
+                    radius: 14,
+                    child: Text(
+                      player.name[0].toUpperCase(),
+                      style: const TextStyle(
+                        color: AppTheme.gold,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    player.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      children: List.generate(3, (index) {
+                        final value = diceValues[index];
+                        final type = diceTypes[index];
+
+                        Color? color;
+                        if (type == 'red') color = AppTheme.diceRed;
+                        if (type == 'blue') color = AppTheme.diceBlue;
+
+                        return DiceWidget(
+                          value: value,
+                          size: 40,
+                          color: color,
+                        );
+                      }),
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              ...submissions.entries.map((entry) {
-                final playerId = entry.key;
-                final submission = entry.value as Map<String, dynamic>;
-                final player = players.firstWhere((p) => p.id == playerId);
-                final diceValues = List<dynamic>.from(submission['diceValues']);
-                final diceTypes = List<String>.from(submission['diceTypes']);
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: Colors.blue,
-                        radius: 14,
-                        child: Text(
-                          player.name[0].toUpperCase(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        player.name,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Wrap(
-                          spacing: 6,
-                          children: List.generate(3, (index) {
-                            final value = diceValues[index];
-                            final type = diceTypes[index];
-
-                            Color? color;
-                            if (type == 'red') color = Colors.red[700];
-                            if (type == 'blue') color = Colors.blue[700];
-
-                            return DiceWidget(
-                              value: value,
-                              size: 40,
-                              color: color,
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ],
-          ),
-        );
+            );
+          }),
+        ],
+      ),
+    );
   }
 
   Widget _buildOpponentDice(Player opponent, PublicPlayerData data) {
@@ -1096,9 +1097,9 @@ class _GameScreenState extends State<GameScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[100],
+        color: Colors.white.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
+        border: Border.all(color: Colors.white24),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1106,12 +1107,12 @@ class _GameScreenState extends State<GameScreen> {
           Row(
             children: [
               CircleAvatar(
-                backgroundColor: Colors.blue,
+                backgroundColor: AppTheme.navyLight,
                 radius: 16,
                 child: Text(
                   opponent.name[0].toUpperCase(),
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: AppTheme.gold,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -1122,19 +1123,23 @@ class _GameScreenState extends State<GameScreen> {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
+                  color: Colors.white,
                 ),
               ),
               const Spacer(),
               Text(
                 '${data.totalDiceRemaining} dice left',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                style: const TextStyle(fontSize: 13, color: Colors.white54),
               ),
             ],
           ),
           const SizedBox(height: 12),
           const Text(
             'Visible Dice:',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -1149,7 +1154,10 @@ class _GameScreenState extends State<GameScreen> {
           const SizedBox(height: 12),
           const Text(
             'Hidden Dice:',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70),
           ),
           const SizedBox(height: 8),
           Row(
@@ -1157,14 +1165,14 @@ class _GameScreenState extends State<GameScreen> {
               DiceWidget(
                 value: data.redDiceUsed ? 0 : null,
                 size: 45,
-                color: Colors.red[700],
+                color: AppTheme.diceRed,
                 isUsed: data.redDiceUsed,
               ),
               const SizedBox(width: 8),
               DiceWidget(
                 value: data.blueDiceUsed ? 0 : null,
                 size: 45,
-                color: Colors.blue[700],
+                color: AppTheme.diceBlue,
                 isUsed: data.blueDiceUsed,
               ),
             ],

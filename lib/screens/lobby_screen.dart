@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../app_theme.dart';
 import '../models/game_state.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
@@ -85,23 +86,25 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   margin: const EdgeInsets.all(16),
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.blue[600]!, Colors.purple[600]!],
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [AppTheme.navyLight, AppTheme.navy],
                     ),
                     borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: AppTheme.gold.withValues(alpha: 0.3), width: 1),
                   ),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Join Code:',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 16,
-                            ),
-                          ),
+                          Text('Join Code:',
+                              style: AppTheme.heading(
+                                  size: 14,
+                                  color: Colors.white60,
+                                  weight: FontWeight.w400)),
                           GestureDetector(
                             onTap: () {
                               Clipboard.setData(
@@ -120,26 +123,21 @@ class _LobbyScreenState extends State<LobbyScreen> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                gradient: const LinearGradient(
+                                  colors: [AppTheme.goldLight, AppTheme.gold],
+                                ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 children: [
                                   Text(
                                     game.joinCode,
-                                    style: TextStyle(
-                                      color: Colors.purple[700],
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 2,
-                                    ),
+                                    style: AppTheme.display(
+                                        size: 22, color: AppTheme.navy),
                                   ),
                                   const SizedBox(width: 8),
-                                  Icon(
-                                    Icons.copy,
-                                    color: Colors.purple[700],
-                                    size: 20,
-                                  ),
+                                  const Icon(Icons.copy,
+                                      color: AppTheme.navy, size: 18),
                                 ],
                               ),
                             ),
@@ -257,22 +255,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.2),
+        color: Colors.white.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white24),
       ),
       child: Column(
         children: [
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
+          Text(label,
+              style: AppTheme.heading(
+                  size: 11, color: Colors.white60, weight: FontWeight.w400)),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: AppTheme.display(size: 18, color: Colors.white),
           ),
         ],
       ),
@@ -340,6 +334,35 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 
   Future<void> _leaveGame() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.cardIvory,
+        title: Text('Leave Game?',
+            style: AppTheme.heading(color: AppTheme.navy)),
+        content: const Text(
+          'You will be removed from the lobby. This cannot be undone.',
+          style: TextStyle(fontSize: 15),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Stay'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.danger,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
     await _firestoreService.leaveGame(
       widget.gameId,
       _authService.currentUserId!,
