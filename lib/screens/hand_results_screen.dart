@@ -29,8 +29,8 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
     final authService = AuthService();
     final myPlayerId = authService.currentUserId!;
 
-    return WillPopScope(
-      onWillPop: () async => false,
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Hand Results'),

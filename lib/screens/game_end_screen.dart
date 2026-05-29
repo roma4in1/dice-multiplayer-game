@@ -102,7 +102,7 @@ class GameEndScreen extends StatelessWidget {
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
+                            color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(30),
                           ),
                           child: const Text(
@@ -157,7 +157,7 @@ class GameEndScreen extends StatelessWidget {
                               ? [
                                   BoxShadow(
                                     color: (medalColor ?? Colors.grey)
-                                        .withOpacity(0.3),
+                                        .withValues(alpha: 0.3),
                                     blurRadius: 8,
                                     offset: const Offset(0, 4),
                                   ),
