@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/game_state.dart';
 import '../models/dice_info.dart';
 import '../models/player.dart';
@@ -77,7 +76,7 @@ class _GameScreenState extends State<GameScreen> {
                 showGeneralDialog(
                   context: context,
                   barrierDismissible: false,
-                  barrierColor: Colors.black.withOpacity(0.8),
+                  barrierColor: Colors.black.withValues(alpha: 0.8),
                   transitionDuration: const Duration(milliseconds: 300),
                   pageBuilder: (context, animation, secondaryAnimation) {
                     return FadeTransition(
@@ -147,59 +146,48 @@ class _GameScreenState extends State<GameScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    StreamBuilder<GameState?>(
-                      stream: _firestoreService.getGameStream(widget.gameId),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const SizedBox();
-                        final game = snapshot.data!;
-                        final players = game.players.entries
-                            .map((e) => Player.fromJson(e.value))
-                            .toList();
-
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: players.map((player) {
-                              final isMe =
-                                  player.id == _authService.currentUserId;
-                              return Column(
-                                children: [
-                                  Text(
-                                    isMe ? 'You' : player.name,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: isMe
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                  ),
-                                  Text(
-                                    '${game.currentRoundPoints[player.id] ?? 0}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    '(${player.totalPoints} total)',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      },
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: players.map((player) {
+                          final isMe =
+                              player.id == _authService.currentUserId;
+                          return Column(
+                            children: [
+                              Text(
+                                isMe ? 'You' : player.name,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: isMe
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                ),
+                              ),
+                              Text(
+                                '${game.currentRoundPoints[player.id] ?? 0}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                '(${player.totalPoints} total)',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ],
                 ),
@@ -231,24 +219,10 @@ class _GameScreenState extends State<GameScreen> {
     GameState game,
   ) {
     final myPlayerId = _authService.currentUserId!;
+    final alreadySubmitted = game.handSubmissions.containsKey(myPlayerId);
 
-    // Check if I already submitted
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('games')
-          .doc(widget.gameId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        bool alreadySubmitted = false;
-        if (snapshot.hasData) {
-          final gameData = snapshot.data!.data() as Map<String, dynamic>?;
-          if (gameData != null) {
-            final submissions =
-                gameData['handSubmissions'] as Map<String, dynamic>? ?? {};
-            alreadySubmitted = submissions.containsKey(myPlayerId);
-          }
-        }
-
+    return Builder(
+      builder: (context) {
         if (alreadySubmitted) {
           return Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -964,7 +938,7 @@ class _GameScreenState extends State<GameScreen> {
                   const SizedBox(height: 16),
 
                   // Game Table - Show submitted hands
-                  _buildGameTable(game, players),
+                  _buildGameTable(game.handSubmissions, players),
 
                   const SizedBox(height: 16),
 
@@ -1006,22 +980,8 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _buildGameTable(GameState game, List<Player> players) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('games')
-          .doc(widget.gameId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox();
-
-        final gameData = snapshot.data!.data() as Map<String, dynamic>?;
-        if (gameData == null) return const SizedBox();
-
-        final submissions =
-            gameData['handSubmissions'] as Map<String, dynamic>? ?? {};
-
-        if (submissions.isEmpty) {
+  Widget _buildGameTable(Map<String, dynamic> submissions, List<Player> players) {
+    if (submissions.isEmpty) {
           return Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(20),
@@ -1129,8 +1089,6 @@ class _GameScreenState extends State<GameScreen> {
             ],
           ),
         );
-      },
-    );
   }
 
   Widget _buildOpponentDice(Player opponent, PublicPlayerData data) {

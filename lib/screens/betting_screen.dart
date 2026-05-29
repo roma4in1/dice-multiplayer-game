@@ -35,14 +35,14 @@ class _BettingScreenState extends State<BettingScreen> {
     {
       'type': 'minimum',
       'title': 'MINIMUM',
-      'description': 'Win a few hands',
+      'description': 'Win exactly 1 hand (3–9 pts)',
       'color': Colors.blue,
       'icon': Icons.trending_down,
     },
     {
       'type': 'maximum',
       'title': 'MAXIMUM',
-      'description': 'Win most hands',
+      'description': 'Win 2 or more hands (10+ pts)',
       'color': Colors.orange,
       'icon': Icons.trending_up,
     },
@@ -255,7 +255,7 @@ class _BettingScreenState extends State<BettingScreen> {
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
                                       color: isSelected
-                                          ? option['color'].withOpacity(0.2)
+                                          ? option['color'].withValues(alpha: 0.2)
                                           : Colors.grey[100],
                                       border: Border.all(
                                         color: isSelected

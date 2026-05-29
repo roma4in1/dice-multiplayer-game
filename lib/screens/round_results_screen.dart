@@ -459,7 +459,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
       case 'minimum':
         return roundPoints > 2.5 && roundPoints < 7.5;
       case 'maximum':
-        return roundPoints > 7.5 && roundPoints < 10;
+        return roundPoints >= 10;
       case 'winner':
         // Check if this player has highest round points
         final allRoundPoints = game.currentRoundPoints;
@@ -478,7 +478,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
 
     switch (bet) {
       case 'zero':
-        return 20; // Fixed bonus for successful ZERO
+        return 30; // Fixed bonus for successful ZERO
       case 'minimum':
       case 'maximum':
       case 'winner':
@@ -506,7 +506,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
   String _getSuccessMessage(String bet) {
     switch (bet) {
       case 'zero':
-        return 'Zero bonus! +20 pts';
+        return 'Zero bonus! +30 pts';
       case 'minimum':
       case 'maximum':
       case 'winner':

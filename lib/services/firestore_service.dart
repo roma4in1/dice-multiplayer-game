@@ -50,7 +50,6 @@ class FirestoreService {
 
       return gameRef.id;
     } catch (e) {
-      print('Error creating game: $e');
       return null;
     }
   }
@@ -74,28 +73,31 @@ class FirestoreService {
         return null; // Game not found
       }
 
-      final gameDoc = querySnapshot.docs.first;
-      final gameData = gameDoc.data();
-      final players = gameData['players'] as Map<String, dynamic>;
+      final gameRef = querySnapshot.docs.first.reference;
 
-      // Check if game is full
-      final maxPlayers = gameData['maxPlayers'] as int;
-      if (players.length >= maxPlayers) {
-        return null; // Game is full
-      }
+      // Use a transaction so the full-check and add are atomic
+      final joined = await _firestore.runTransaction<bool>((tx) async {
+        final gameDoc = await tx.get(gameRef);
+        if (!gameDoc.exists) return false;
 
-      // Add player to game
-      final player = Player(
-        id: playerId,
-        name: playerName,
-        joinedAt: DateTime.now(),
-      );
+        final gameData = gameDoc.data()!;
+        final players = gameData['players'] as Map<String, dynamic>;
+        final maxPlayers = gameData['maxPlayers'] as int;
 
-      await gameDoc.reference.update({'players.$playerId': player.toJson()});
+        if (players.length >= maxPlayers) return false;
+        if (gameData['status'] != 'waiting') return false;
 
-      return gameDoc.id;
+        final player = Player(
+          id: playerId,
+          name: playerName,
+          joinedAt: DateTime.now(),
+        );
+        tx.update(gameRef, {'players.$playerId': player.toJson()});
+        return true;
+      });
+
+      return joined ? gameRef.id : null;
     } catch (e) {
-      print('Error joining game: $e');
       return null;
     }
   }
@@ -121,7 +123,7 @@ class FirestoreService {
         'players.$playerId.isReady': ready,
       });
     } catch (e) {
-      print('Error setting player ready: $e');
+      // ignore: setting ready status is best-effort
     }
   }
 
@@ -147,7 +149,7 @@ class FirestoreService {
         'currentlyRolling': null,
       });
     } catch (e) {
-      print('Error starting game: $e');
+      rethrow;
     }
   }
 
@@ -169,28 +171,31 @@ class FirestoreService {
       // Roll the dice
       await _rollDiceForPlayer(gameId, playerId, {'name': playerName});
 
-      // Mark as done rolling
-      await _firestore.collection('games').doc(gameId).update({
-        'playersWhoRolled': FieldValue.arrayUnion([playerId]),
-        'currentlyRolling': null,
+      // Mark done and conditionally advance to betting — atomically
+      final gameRef = _firestore.collection('games').doc(gameId);
+      await _firestore.runTransaction<void>((tx) async {
+        final gameDoc = await tx.get(gameRef);
+        final gameData = gameDoc.data()!;
+        final players = gameData['players'] as Map<String, dynamic>;
+        final playersWhoRolled = List<String>.from(
+          gameData['playersWhoRolled'] ?? [],
+        );
+
+        final update = <String, dynamic>{
+          'playersWhoRolled': FieldValue.arrayUnion([playerId]),
+          'currentlyRolling': null,
+        };
+
+        // Only the player whose roll completes the set should flip status
+        if (!playersWhoRolled.contains(playerId) &&
+            playersWhoRolled.length + 1 == players.length) {
+          update['status'] = 'betting';
+        }
+
+        tx.update(gameRef, update);
       });
-
-      // Check if all players have rolled
-      final gameDoc = await _firestore.collection('games').doc(gameId).get();
-      final gameData = gameDoc.data()!;
-      final players = gameData['players'] as Map<String, dynamic>;
-      final playersWhoRolled = List<String>.from(
-        gameData['playersWhoRolled'] ?? [],
-      );
-
-      if (playersWhoRolled.length == players.length) {
-        // All players rolled, move to betting
-        await _firestore.collection('games').doc(gameId).update({
-          'status': 'betting',
-        });
-      }
     } catch (e) {
-      print('Error rolling dice: $e');
+      rethrow;
     }
   }
 
@@ -230,7 +235,7 @@ class FirestoreService {
         });
       }
     } catch (e) {
-      print('Error submitting bet: $e');
+      rethrow;
     }
   }
 
@@ -294,7 +299,7 @@ class FirestoreService {
         },
       });
     } catch (e) {
-      print('Error rolling dice for player: $e');
+      rethrow;
     }
   }
 
@@ -413,15 +418,18 @@ class FirestoreService {
       final redUsed = selectedIndices.contains(0);
       final blueUsed = selectedIndices.contains(1);
 
-      await _firestore.collection('games').doc(gameId).update({
+      final publicUpdate = <String, dynamic>{
         'publicPlayerData.$playerId.usedVisibleIndices': FieldValue.arrayUnion(
           visibleIndicesUsed,
         ),
-        'publicPlayerData.$playerId.redDiceUsed': redUsed ? true : false,
-        'publicPlayerData.$playerId.blueDiceUsed': blueUsed ? true : false,
         'publicPlayerData.$playerId.totalDiceRemaining':
             11 - newUsedIndices.length,
-      });
+      };
+      // Only ever set to true — never reset a used die back to false
+      if (redUsed) publicUpdate['publicPlayerData.$playerId.redDiceUsed'] = true;
+      if (blueUsed) publicUpdate['publicPlayerData.$playerId.blueDiceUsed'] = true;
+
+      await _firestore.collection('games').doc(gameId).update(publicUpdate);
 
       // Get updated game data and check if all players submitted
       final updatedGameDoc = await _firestore
@@ -449,7 +457,6 @@ class FirestoreService {
         });
       }
     } catch (e) {
-      print('Error playing hand: $e');
       rethrow;
     }
   }
@@ -478,9 +485,7 @@ class FirestoreService {
     Map<String, dynamic> players,
     Map<String, dynamic> submissions,
   ) async {
-    print('=== EVALUATING HAND ===');
-
-    // Evaluate each player's hand using the public API
+    // Evaluate each player's hand
     final handResults = <String, HandResult>{};
 
     for (var entry in submissions.entries) {
@@ -489,53 +494,30 @@ class FirestoreService {
       final diceValues = List<int>.from(submission['actualValues']);
       final playerName = players[playerId]['name'] as String;
 
-      // ✅ Use HandEvaluator.evaluateHand() - the public method
-      final result = HandEvaluator.evaluateHand(
-        playerId,
-        playerName,
-        diceValues,
-      );
-
+      final result = HandEvaluator.evaluateHand(playerId, playerName, diceValues);
       handResults[playerId] = result;
-
-      print('Player: $playerName');
-      print('  Dice: $diceValues');
-      print('  Rank: ${result.rank.displayName}');
-      print('  High Card: ${result.highCard}');
-      print('  Points: ${result.points}');
     }
 
     // Determine winners (handles ties)
     final winnerIds = HandEvaluator.determineWinners(handResults);
     final isTie = winnerIds.length > 1;
 
-    print('Winners: $winnerIds (${isTie ? "TIE" : "CLEAR WINNER"})');
-
     const int pointsPerHand = 5;
-    final totalPoints = pointsPerHand;
-
-    print('Hand worth: $totalPoints points (winner takes all)');
-
     final pointsPerWinner = isTie
-        ? (totalPoints / winnerIds.length).ceil()
-        : totalPoints;
+        ? (pointsPerHand / winnerIds.length).ceil()
+        : pointsPerHand;
 
-    print('Points per winner: $pointsPerWinner');
-
-    // ✅ Get current round points
+    // Get current round points
     final gameDoc = await _firestore.collection('games').doc(gameId).get();
     final gameData = gameDoc.data()!;
     final currentRoundPoints = Map<String, int>.from(
       gameData['currentRoundPoints'] ?? {},
     );
 
-    // ✅ Update round points for winners ONLY (don't update totalPoints yet)
+    // Update round points for winners only (totalPoints updated later in _evaluateRoundBets)
     for (var winnerId in winnerIds) {
       currentRoundPoints[winnerId] =
           (currentRoundPoints[winnerId] ?? 0) + pointsPerWinner;
-      print(
-        'Updated round points for $winnerId: ${currentRoundPoints[winnerId]}',
-      );
     }
 
     // ✅ Update HandResult objects with ACTUAL points awarded (accounting for ties)
@@ -577,79 +559,61 @@ class FirestoreService {
       'handEvaluationComplete': true,
       'currentTurn': null,
       'playersReadyToContinue': [],
-      'currentRoundPoints': currentRoundPoints, // ✅ Store round points only
+      'currentRoundPoints': currentRoundPoints,
     });
-
-    print('=== END EVALUATING HAND ===\n');
   }
 
   Future<void> markPlayerReadyToContinue(String gameId, String playerId) async {
     try {
-      print('=== MARK PLAYER READY ===');
-      print('Player: $playerId');
+      final gameRef = _firestore.collection('games').doc(gameId);
 
-      // Add player to ready list
-      await _firestore.collection('games').doc(gameId).update({
-        'playersReadyToContinue': FieldValue.arrayUnion([playerId]),
-      });
-
-      // Wait for write to complete
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      // Check if all players are ready
-      final gameDoc = await _firestore.collection('games').doc(gameId).get();
-      final gameData = gameDoc.data()!;
-      final players = gameData['players'] as Map<String, dynamic>;
-      final playersReady = List<String>.from(
-        gameData['playersReadyToContinue'] ?? [],
-      );
-
-      print('Total players: ${players.length}');
-      print('Players ready: ${playersReady.length}');
-
-      // If all players ready, continue the game
-      if (playersReady.length == players.length) {
-        print('✅ ALL PLAYERS READY!');
-
-        final currentHand = gameData['currentHand'] as int;
-        final currentRound = gameData['currentRound'] as int;
-        final totalRounds = gameData['totalRounds'] as int;
-        final status = gameData['status'] as String;
-
-        print(
-          'Current: Hand $currentHand, Round $currentRound/$totalRounds, Status: $status',
+      // Atomically add this player and check if all are ready
+      String? nextAction = await _firestore.runTransaction<String?>((tx) async {
+        final gameDoc = await tx.get(gameRef);
+        final gameData = gameDoc.data()!;
+        final players = gameData['players'] as Map<String, dynamic>;
+        final playersReady = List<String>.from(
+          gameData['playersReadyToContinue'] ?? [],
         );
 
-        // Determine what to do based on current state
-        if (status == 'roundEnd') {
-          // Continuing from round results screen
-          await _continueFromRoundResults(gameId);
-        } else {
-          // Continuing from hand results screen
-          if (currentHand < 3) {
-            // Continue to next hand
-            await _continueToNextHand(gameId);
-          } else {
-            // End of round - evaluate bets and show round results
-            await _evaluateRoundBets(gameId);
-            await _firestore.collection('games').doc(gameId).update({
-              'status': 'roundEnd',
-              'playersReadyToContinue': [],
-            });
-          }
-        }
-      }
+        // Idempotent: skip if already marked ready
+        if (playersReady.contains(playerId)) return null;
 
-      print('=== END MARK PLAYER READY ===\n');
+        final updatedReady = [...playersReady, playerId];
+        tx.update(gameRef, {
+          'playersReadyToContinue': FieldValue.arrayUnion([playerId]),
+        });
+
+        if (updatedReady.length == players.length) {
+          return gameData['status'] as String;
+        }
+        return null;
+      });
+
+      // Only the transaction that completes the set continues the game
+      if (nextAction == null) return;
+
+      final gameDoc = await gameRef.get();
+      final gameData = gameDoc.data()!;
+      final currentHand = gameData['currentHand'] as int;
+
+      if (nextAction == 'roundEnd') {
+        await _continueFromRoundResults(gameId);
+      } else if (currentHand < 3) {
+        await _continueToNextHand(gameId);
+      } else {
+        await _evaluateRoundBets(gameId);
+        await gameRef.update({
+          'status': 'roundEnd',
+          'playersReadyToContinue': [],
+        });
+      }
     } catch (e) {
-      print('❌ Error marking player ready: $e');
       rethrow;
     }
   }
 
   Future<void> _continueToNextHand(String gameId) async {
-    print('➡️ Continuing to next hand');
-
     final gameDoc = await _firestore.collection('games').doc(gameId).get();
     final gameData = gameDoc.data()!;
     final currentHand = gameData['currentHand'] as int;
@@ -675,8 +639,6 @@ class FirestoreService {
       'turnOrder': newTurnOrder,
       'playersReadyToContinue': [],
     });
-
-    print('✅ Successfully continued to hand ${currentHand + 1}');
   }
 
   /// Continue game from round results screen to next round or game end
@@ -688,8 +650,7 @@ class FirestoreService {
     final players = gameData['players'] as Map<String, dynamic>;
 
     if (currentRound < totalRounds) {
-      // Start next round
-      print('➡️ Starting round ${currentRound + 1}');
+      // Start next round;
 
       // Reset players' bets
       final updates = <String, dynamic>{
@@ -714,12 +675,7 @@ class FirestoreService {
       }
 
       await _firestore.collection('games').doc(gameId).update(updates);
-
-      print('✅ Round ${currentRound + 1} started');
     } else {
-      // Game over
-      print('🏁 Game complete!');
-
       await _firestore.collection('games').doc(gameId).update({
         'status': 'gameEnd',
       });
@@ -795,7 +751,7 @@ class FirestoreService {
       case 'minimum':
         return roundPoints > 2.5 && roundPoints < 7.5;
       case 'maximum':
-        return roundPoints > 7.5 && roundPoints < 10;
+        return roundPoints >= 10;
       case 'winner':
         if (allRoundPoints.isEmpty) return false;
         final maxPoints = allRoundPoints.values.reduce((a, b) => a > b ? a : b);
@@ -829,7 +785,6 @@ class FirestoreService {
         }
       }
     } catch (e) {
-      print('Error updating player name: $e');
       rethrow;
     }
   }
@@ -864,7 +819,7 @@ class FirestoreService {
         await gameRef.update({'players': players});
       }
     } catch (e) {
-      print('Error leaving game: $e');
+      // ignore: best-effort cleanup
     }
   }
 }
