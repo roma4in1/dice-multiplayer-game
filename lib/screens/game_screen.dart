@@ -851,6 +851,28 @@ class _GameScreenState extends State<GameScreen> {
                         return DiceWidget(value: value, size: 40);
                       }).toList(),
                     ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Hidden Dice:',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white70),
+                    ),
+                    const SizedBox(height: 6),
+                    const Row(
+                      children: [
+                        DiceWidget(
+                            value: null,
+                            size: 36,
+                            color: AppTheme.diceRed),
+                        SizedBox(width: 6),
+                        DiceWidget(
+                            value: null,
+                            size: 36,
+                            color: AppTheme.diceBlue),
+                      ],
+                    ),
                   ],
                 );
               },

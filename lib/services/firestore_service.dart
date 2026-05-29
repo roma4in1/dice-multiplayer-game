@@ -160,33 +160,68 @@ class FirestoreService {
     String playerName,
   ) async {
     try {
-      // Mark as currently rolling
-      await _firestore.collection('games').doc(gameId).update({
+      // Fire-and-forget: show rolling animation on other clients immediately
+      _firestore.collection('games').doc(gameId).update({
         'currentlyRolling': playerId,
       });
 
-      // Wait for animation
-      await Future.delayed(const Duration(milliseconds: 2000));
+      // Compute dice locally — no network needed
+      final allDice = List.generate(11, (_) => _random.nextInt(6) + 1);
+      final redDie = DiceInfo(value: allDice[0], index: 0, type: DiceType.red);
+      final blueDie =
+          DiceInfo(value: allDice[1], index: 1, type: DiceType.blue);
+      final visibleValues = allDice.sublist(2)..sort();
+      final visibleDice = List.generate(
+        9,
+        (i) => DiceInfo(
+            value: visibleValues[i], index: i + 2, type: DiceType.visible),
+      );
+      final sortedAllDice = [allDice[0], allDice[1], ...visibleValues];
 
-      // Roll the dice
-      await _rollDiceForPlayer(gameId, playerId, {'name': playerName});
+      // Short animation window
+      await Future.delayed(const Duration(milliseconds: 800));
 
-      // Mark done and conditionally advance to betting — atomically
+      // Single transaction: write secrets + public data + mark rolled
       final gameRef = _firestore.collection('games').doc(gameId);
+      final secretRef = _firestore
+          .collection('games')
+          .doc(gameId)
+          .collection('playerSecrets')
+          .doc(playerId);
+
       await _firestore.runTransaction<void>((tx) async {
         final gameDoc = await tx.get(gameRef);
         final gameData = gameDoc.data()!;
         final players = gameData['players'] as Map<String, dynamic>;
-        final playersWhoRolled = List<String>.from(
-          gameData['playersWhoRolled'] ?? [],
-        );
+        final playersWhoRolled =
+            List<String>.from(gameData['playersWhoRolled'] ?? []);
 
+        // Write secret dice (subcollection)
+        tx.set(secretRef, {
+          'allDice': sortedAllDice,
+          'hiddenDice': {
+            'red': redDie.toJson(),
+            'blue': blueDie.toJson(),
+          },
+          'visibleDice': visibleDice.map((d) => d.toJson()).toList(),
+          'usedIndices': [],
+        });
+
+        // Update game doc: public data + rolled status
         final update = <String, dynamic>{
+          'publicPlayerData.$playerId': {
+            'playerId': playerId,
+            'playerName': playerName,
+            'visibleDiceValues': visibleValues,
+            'usedVisibleIndices': [],
+            'redDiceUsed': false,
+            'blueDiceUsed': false,
+            'totalDiceRemaining': 11,
+          },
           'playersWhoRolled': FieldValue.arrayUnion([playerId]),
           'currentlyRolling': null,
         };
 
-        // Only the player whose roll completes the set should flip status
         if (!playersWhoRolled.contains(playerId) &&
             playersWhoRolled.length + 1 == players.length) {
           update['status'] = 'betting';

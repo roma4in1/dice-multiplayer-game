@@ -30,7 +30,9 @@ class _BettingScreenState extends State<BettingScreen> {
     {
       'type': 'zero',
       'title': 'ZERO',
-      'description': 'Win 0 points this round',
+      'description': 'Score exactly 0 points this round',
+      'reward': '+30 pts',
+      'rewardDetail': 'fixed bonus',
       'emoji': '🚫',
       'gradient': [Color(0xFF424242), Color(0xFF212121)],
       'glow': Color(0xFF757575),
@@ -39,6 +41,8 @@ class _BettingScreenState extends State<BettingScreen> {
       'type': 'minimum',
       'title': 'MINIMUM',
       'description': 'Win exactly 1 hand (3–9 pts)',
+      'reward': '×2 pts',
+      'rewardDetail': 'points doubled',
       'emoji': '📉',
       'gradient': [Color(0xFF1565C0), Color(0xFF0D47A1)],
       'glow': Color(0xFF42A5F5),
@@ -47,6 +51,8 @@ class _BettingScreenState extends State<BettingScreen> {
       'type': 'maximum',
       'title': 'MAXIMUM',
       'description': 'Win 2 or more hands (10+ pts)',
+      'reward': '×2 pts',
+      'rewardDetail': 'points doubled',
       'emoji': '📈',
       'gradient': [Color(0xFFE65100), Color(0xFFBF360C)],
       'glow': Color(0xFFFF9800),
@@ -54,7 +60,9 @@ class _BettingScreenState extends State<BettingScreen> {
     {
       'type': 'winner',
       'title': 'WINNER',
-      'description': 'Win the entire round',
+      'description': 'Finish with the highest score',
+      'reward': '×2 pts',
+      'rewardDetail': 'points doubled',
       'emoji': '🏆',
       'gradient': [Color(0xFFD4AF37), Color(0xFFAA8820)],
       'glow': Color(0xFFFFD54F),
@@ -323,10 +331,66 @@ class _BettingScreenState extends State<BettingScreen> {
                                                   Text(
                                                     option['description'],
                                                     style: TextStyle(
-                                                      fontSize: 13,
+                                                      fontSize: 12,
                                                       color: isSelected
                                                           ? Colors.white70
                                                           : Colors.white38,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  // Reward badge
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 3),
+                                                    decoration: BoxDecoration(
+                                                      color: isSelected
+                                                          ? Colors.white
+                                                              .withValues(
+                                                                  alpha: 0.2)
+                                                          : Colors.white
+                                                              .withValues(
+                                                                  alpha: 0.08),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              20),
+                                                      border: Border.all(
+                                                        color: isSelected
+                                                            ? AppTheme.goldLight
+                                                                .withValues(
+                                                                    alpha: 0.7)
+                                                            : Colors.white24,
+                                                        width: 1,
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: [
+                                                        Icon(
+                                                          Icons.star_rounded,
+                                                          size: 12,
+                                                          color: isSelected
+                                                              ? AppTheme
+                                                                  .goldLight
+                                                              : Colors.white38,
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        Text(
+                                                          'If correct: ${option['reward']}',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color: isSelected
+                                                                ? AppTheme
+                                                                    .goldLight
+                                                                : Colors
+                                                                    .white38,
+                                                          ),
+                                                        ),
+                                                      ],
                                                     ),
                                                   ),
                                                 ],
