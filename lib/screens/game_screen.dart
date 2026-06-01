@@ -44,8 +44,6 @@ class _GameScreenState extends State<GameScreen> {
   Timer? _reactionTimer;
   Map<String, dynamic> _lastSeenReactions = {};
 
-  static const _emojis = ['😮', '🔥', '😤', '👏', '😭'];
-
   @override
   void dispose() {
     _turnTimer?.cancel();
@@ -198,6 +196,9 @@ class _GameScreenState extends State<GameScreen> {
           final currentlyRolling = game.currentlyRolling;
           final playersWhoRolled = game.playersWhoRolled;
           final myPlayerId = _authService.currentUserId!;
+          final myPlayerName = players.cast<Player?>()
+              .firstWhere((p) => p!.id == myPlayerId, orElse: () => null)
+              ?.name ?? 'Player';
           final haveIRolled = playersWhoRolled.contains(myPlayerId);
           final isMyTurnToRoll =
               !haveIRolled && !_isRolling && currentlyRolling == null;
@@ -326,6 +327,18 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
             ),
+          // ── Emoji chat panel (bottom-left) ─────────────────────────────
+          Positioned(
+            bottom: 12,
+            left: 12,
+            child: _EmojiChatPanel(
+              gameId: widget.gameId,
+              myPlayerId: myPlayerId,
+              myPlayerName: myPlayerName,
+              chatMessages: game.chatMessages,
+              firestoreService: _firestoreService,
+            ),
+          ),
           ],
         );
         },
@@ -1051,10 +1064,12 @@ class _GameScreenState extends State<GameScreen> {
   Widget _buildPlayingPhaseContent(GameState game, List<Player> players) {
     final myPlayerId = _authService.currentUserId!;
     final isMyTurn = game.currentTurn == myPlayerId;
-    final currentTurnPlayer = players.firstWhere(
-      (p) => p.id == game.currentTurn,
-      orElse: () => players.first,
-    );
+    final currentTurnPlayer = game.currentTurn != null
+        ? players.firstWhere(
+            (p) => p.id == game.currentTurn,
+            orElse: () => players.first,
+          )
+        : players.first;
     final alreadySubmitted = game.handSubmissions.containsKey(myPlayerId);
 
     return StreamBuilder<PlayerDice?>(
@@ -1146,6 +1161,15 @@ class _GameScreenState extends State<GameScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${_secondsLeft}s left',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: _secondsLeft <= 10 ? Colors.red : AppTheme.gold,
+                      ),
+                    ),
                     const SizedBox(width: 12),
                   ],
                   Flexible(
@@ -1174,40 +1198,10 @@ class _GameScreenState extends State<GameScreen> {
                   .fade(begin: 0.75, end: 1.0, duration: 900.ms);
             }
 
-            // Emoji reaction bar
-            final emojiBar = Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.black.withValues(alpha: 0.2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: _emojis.map((emoji) {
-                  return GestureDetector(
-                    onTap: () => _firestoreService.sendReaction(
-                        widget.gameId, myPlayerId, emoji),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: Colors.white12),
-                      ),
-                      child: Center(
-                        child: Text(emoji,
-                            style: const TextStyle(fontSize: 22)),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            );
-
             return SingleChildScrollView(
               child: Column(
                 children: [
                   turnIndicator,
-                  emojiBar,
                   const SizedBox(height: 12),
 
                   _buildGameTable(game, players),
@@ -1475,5 +1469,195 @@ class _ThinkingDotsState extends State<_ThinkingDots>
     return Text(dots,
         style: const TextStyle(
             fontSize: 20, color: Colors.white54, letterSpacing: 2));
+  }
+}
+
+// ── Emoji Chat Panel ────────────────────────────────────────────────────────
+
+class _EmojiChatPanel extends StatefulWidget {
+  final String gameId;
+  final String myPlayerId;
+  final String myPlayerName;
+  final List<Map<String, dynamic>> chatMessages;
+  final FirestoreService firestoreService;
+
+  const _EmojiChatPanel({
+    required this.gameId,
+    required this.myPlayerId,
+    required this.myPlayerName,
+    required this.chatMessages,
+    required this.firestoreService,
+  });
+
+  @override
+  State<_EmojiChatPanel> createState() => _EmojiChatPanelState();
+}
+
+class _EmojiChatPanelState extends State<_EmojiChatPanel> {
+  static const _emojis = ['😮', '🔥', '😤', '👏', '😭'];
+  static const _cooldownSeconds = 3;
+
+  bool _isOpen = false;
+  int _cooldownLeft = 0;
+  Timer? _cooldownTimer;
+
+  @override
+  void dispose() {
+    _cooldownTimer?.cancel();
+    super.dispose();
+  }
+
+  void _send(String emoji) {
+    if (_cooldownLeft > 0) return;
+    widget.firestoreService.sendReaction(
+        widget.gameId, widget.myPlayerId, widget.myPlayerName, emoji);
+    setState(() => _cooldownLeft = _cooldownSeconds);
+    _cooldownTimer?.cancel();
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() {
+        _cooldownLeft--;
+        if (_cooldownLeft <= 0) t.cancel();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isOpen) {
+      return GestureDetector(
+        onTap: () => setState(() => _isOpen = true),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AppTheme.navy.withValues(alpha: 0.88),
+            shape: BoxShape.circle,
+            border: Border.all(color: AppTheme.gold.withValues(alpha: 0.5)),
+            boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 8)],
+          ),
+          child: const Center(child: Text('💬', style: TextStyle(fontSize: 20))),
+        ),
+      );
+    }
+
+    // Show last 10 messages, newest at bottom
+    final recent = widget.chatMessages.length > 10
+        ? widget.chatMessages.sublist(widget.chatMessages.length - 10)
+        : widget.chatMessages;
+
+    return Container(
+      width: 230,
+      decoration: BoxDecoration(
+        color: AppTheme.navy.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.4)),
+        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 12)],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+            child: Row(
+              children: [
+                const Text('💬', style: TextStyle(fontSize: 13)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text('Reactions',
+                      style: AppTheme.heading(
+                          size: 12, color: Colors.white70, weight: FontWeight.w600)),
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _isOpen = false),
+                  child: const Icon(Icons.close, color: Colors.white38, size: 17),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+
+          // Message list
+          SizedBox(
+            height: 96,
+            child: recent.isEmpty
+                ? const Center(
+                    child: Text('No reactions yet',
+                        style: TextStyle(color: Colors.white30, fontSize: 11)),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    itemCount: recent.length,
+                    itemBuilder: (context, i) {
+                      final msg = recent[i];
+                      final isMe = msg['playerId'] == widget.myPlayerId;
+                      final name = isMe ? 'You' : (msg['playerName'] as String? ?? '?');
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 1.5),
+                        child: Row(
+                          children: [
+                            Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: isMe ? AppTheme.goldLight : Colors.white60,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(msg['emoji'] as String? ?? '',
+                                style: const TextStyle(fontSize: 16)),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          const Divider(color: Colors.white12, height: 1),
+
+          // Emoji buttons
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: _emojis.map((emoji) {
+                final canSend = _cooldownLeft <= 0;
+                return GestureDetector(
+                  onTap: canSend ? () => _send(emoji) : null,
+                  child: AnimatedOpacity(
+                    opacity: canSend ? 1.0 : 0.35,
+                    duration: const Duration(milliseconds: 200),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Center(
+                        child: Text(emoji, style: const TextStyle(fontSize: 18)),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+
+          // Cooldown indicator
+          if (_cooldownLeft > 0)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '⏱ ${_cooldownLeft}s cooldown',
+                style: const TextStyle(fontSize: 10, color: Colors.white38),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }

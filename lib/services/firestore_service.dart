@@ -234,41 +234,46 @@ class FirestoreService {
     }
   }
 
-  // Submit bet
+  // Submit bet — fully atomic: writes bet and transitions to playing in one transaction
   Future<void> submitBet(String gameId, String playerId, String bet) async {
     try {
-      await _firestore.collection('games').doc(gameId).update({
-        'players.$playerId.currentBet': bet,
-      });
+      final gameRef = _firestore.collection('games').doc(gameId);
 
-      // Check if all players have bet
-      final gameDoc = await _firestore.collection('games').doc(gameId).get();
-      final gameData = gameDoc.data()!;
-      final players = gameData['players'] as Map<String, dynamic>;
+      await _firestore.runTransaction<void>((tx) async {
+        final doc = await tx.get(gameRef);
+        final data = doc.data()!;
+        final players = data['players'] as Map<String, dynamic>;
 
-      final allPlayersBet = players.values.every((player) {
-        return player['currentBet'] != null &&
-            player['currentBet'].toString().isNotEmpty;
-      });
+        // Idempotent: skip if this player already locked in a bet
+        final existing = players[playerId]?['currentBet'] as String? ?? '';
+        if (existing.isNotEmpty) return;
 
-      // If all players have bet, move to playing phase (hand selection)
-      if (allPlayersBet) {
-        final playerIds = players.keys.toList();
+        final update = <String, dynamic>{'players.$playerId.currentBet': bet};
 
-        final initialRoundPoints = <String, int>{};
-        for (var playerId in playerIds) {
-          initialRoundPoints[playerId] = 0;
+        // Check whether every OTHER player has already bet —
+        // if yes, this is the last bet and we transition to playing.
+        final allOthersBet = players.keys
+            .where((id) => id != playerId)
+            .every((id) {
+              final b = players[id]['currentBet'] as String?;
+              return b != null && b.isNotEmpty;
+            });
+
+        if (allOthersBet) {
+          final playerIds = players.keys.toList();
+          final initialRoundPoints = {for (final id in playerIds) id: 0};
+          update.addAll({
+            'status': 'playing',
+            'currentHand': 1,
+            'currentRoundPoints': initialRoundPoints,
+            'currentTurn': playerIds[0],
+            'turnOrder': playerIds,
+            'handSubmissions': {},
+          });
         }
 
-        await _firestore.collection('games').doc(gameId).update({
-          'status': 'playing',
-          'currentHand': 1,
-          'currentRoundPoints': initialRoundPoints,
-          'currentTurn': playerIds[0], // First player goes first
-          'turnOrder': playerIds,
-          'handSubmissions': {},
-        });
-      }
+        tx.update(gameRef, update);
+      });
     } catch (e) {
       rethrow;
     }
@@ -376,9 +381,14 @@ class FirestoreService {
     String playerId,
     List<int> selectedIndices,
   ) async {
+    if (selectedIndices.length != 3) {
+      throw Exception('Must select exactly 3 dice');
+    }
+
     try {
+      final gameRef = _firestore.collection('games').doc(gameId);
       // Check if it's player's turn
-      final gameDoc = await _firestore.collection('games').doc(gameId).get();
+      final gameDoc = await gameRef.get();
       final gameData = gameDoc.data()!;
 
       if (gameData['currentTurn'] != playerId) {
@@ -466,30 +476,34 @@ class FirestoreService {
 
       await _firestore.collection('games').doc(gameId).update(publicUpdate);
 
-      // Get updated game data and check if all players submitted
-      final updatedGameDoc = await _firestore
-          .collection('games')
-          .doc(gameId)
-          .get();
+      // Re-read to check if all players have now submitted
+      final updatedGameDoc = await gameRef.get();
       final updatedGameData = updatedGameDoc.data()!;
       final updatedSubmissions =
           updatedGameData['handSubmissions'] as Map<String, dynamic>;
       final turnOrder = List<String>.from(updatedGameData['turnOrder']);
 
-      // Check if all players have submitted
       if (updatedSubmissions.length == players.length) {
-        // All players submitted - reveal hidden dice and evaluate
-        await _revealHiddenDice(gameId, updatedSubmissions);
-        await _evaluateHand(gameId, players, updatedSubmissions);
+        // Use a transaction to claim evaluation rights — prevents both clients
+        // from running _evaluateHand simultaneously (double-point bug).
+        final shouldEvaluate = await _firestore.runTransaction<bool>((tx) async {
+          final doc = await tx.get(gameRef);
+          if (doc.data()!['handEvaluationPending'] as bool? ?? false) return false;
+          tx.update(gameRef, {'handEvaluationPending': true});
+          return true;
+        });
+
+        if (shouldEvaluate) {
+          await _revealHiddenDice(gameId, updatedSubmissions);
+          await _evaluateHand(gameId, players, updatedSubmissions);
+        }
       } else {
         // Advance to next player's turn
         final currentIndex = turnOrder.indexOf(playerId);
         final nextIndex = (currentIndex + 1) % turnOrder.length;
         final nextPlayerId = turnOrder[nextIndex];
 
-        await _firestore.collection('games').doc(gameId).update({
-          'currentTurn': nextPlayerId,
-        });
+        await gameRef.update({'currentTurn': nextPlayerId});
       }
     } catch (e) {
       rethrow;
@@ -670,6 +684,7 @@ class FirestoreService {
       'handWinner': null,
       'handWinners': [],
       'handEvaluationComplete': false,
+      'handEvaluationPending': false,
       'currentTurn': newTurnOrder[0],
       'turnOrder': newTurnOrder,
       'playersReadyToContinue': [],
@@ -700,6 +715,7 @@ class FirestoreService {
         'handWinner': null,
         'handWinners': [],
         'handEvaluationComplete': false,
+        'handEvaluationPending': false,
         'currentTurn': null,
         'playersReadyToContinue': [],
       };
@@ -784,9 +800,11 @@ class FirestoreService {
       case 'zero':
         return roundPoints == 0;
       case 'minimum':
-        return roundPoints > 2.5 && roundPoints < 7.5;
+        // Won exactly 1 hand: solo win = 5 pts, tied win = 3 pts. Max for 1 hand is 5.
+        return roundPoints > 0 && roundPoints <= 5;
       case 'maximum':
-        return roundPoints >= 10;
+        // Won 2+ hands — works for tied wins too (3+3=6).
+        return roundPoints >= 6;
       case 'winner':
         if (allRoundPoints.isEmpty) return false;
         final maxPoints = allRoundPoints.values.reduce((a, b) => a > b ? a : b);
@@ -859,13 +877,19 @@ class FirestoreService {
   }
 
   Future<void> sendReaction(
-      String gameId, String playerId, String emoji) async {
+      String gameId, String playerId, String playerName, String emoji) async {
     try {
+      final timestamp = DateTime.now().toIso8601String();
       await _firestore.collection('games').doc(gameId).update({
-        'reactions.$playerId': {
-          'emoji': emoji,
-          'timestamp': DateTime.now().toIso8601String(),
-        },
+        'reactions.$playerId': {'emoji': emoji, 'timestamp': timestamp},
+        'chatMessages': FieldValue.arrayUnion([
+          {
+            'playerId': playerId,
+            'playerName': playerName,
+            'emoji': emoji,
+            'timestamp': timestamp,
+          }
+        ]),
       });
     } catch (e) {
       // ignore: best-effort
@@ -876,14 +900,28 @@ class FirestoreService {
       GameState game) async {
     try {
       final gameRef = _firestore.collection('games').doc(gameId);
-      final players = game.players;
-      final newVotes = [...game.rematchVotes, playerId];
 
-      if (newVotes.length >= players.length) {
-        // All voted — create new game
+      // Atomically record vote and determine if this is the last vote
+      final shouldCreate = await _firestore.runTransaction<bool>((tx) async {
+        final doc = await tx.get(gameRef);
+        final data = doc.data()!;
+        final votes = List<String>.from(data['rematchVotes'] ?? []);
+        final players = data['players'] as Map<String, dynamic>;
+
+        if (votes.contains(playerId)) return false; // idempotent
+
+        votes.add(playerId);
+        tx.update(gameRef, {'rematchVotes': votes});
+
+        return votes.length >= players.length;
+      });
+
+      if (shouldCreate) {
+        // All players voted — create new game using the passed game snapshot for settings
+        final players = game.players;
+        final hostId = game.hostId;
         final newRef = _firestore.collection('games').doc();
         final newJoinCode = _generateJoinCode();
-        final hostId = game.hostId;
 
         final initialPlayers = <String, dynamic>{};
         for (final entry in players.entries) {
@@ -911,21 +949,16 @@ class FirestoreService {
           'handResults': {},
           'handWinners': [],
           'handEvaluationComplete': false,
+          'handEvaluationPending': false,
           'publicPlayerData': {},
           'playersReadyToContinue': [],
           'currentRoundPoints': {},
           'reactions': {},
           'rematchVotes': [],
+          'chatMessages': [],
         });
 
-        await gameRef.update({
-          'rematchVotes': newVotes,
-          'rematchGameId': newRef.id,
-        });
-      } else {
-        await gameRef.update({
-          'rematchVotes': FieldValue.arrayUnion([playerId]),
-        });
+        await gameRef.update({'rematchGameId': newRef.id});
       }
     } catch (e) {
       rethrow;

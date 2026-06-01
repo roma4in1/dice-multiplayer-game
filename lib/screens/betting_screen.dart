@@ -40,7 +40,7 @@ class _BettingScreenState extends State<BettingScreen> {
     {
       'type': 'minimum',
       'title': 'MINIMUM',
-      'description': 'Win exactly 1 hand (3–9 pts)',
+      'description': 'Win exactly 1 hand (1–5 pts)',
       'reward': '×2 pts',
       'rewardDetail': 'points doubled',
       'emoji': '📉',
@@ -50,7 +50,7 @@ class _BettingScreenState extends State<BettingScreen> {
     {
       'type': 'maximum',
       'title': 'MAXIMUM',
-      'description': 'Win 2 or more hands (10+ pts)',
+      'description': 'Win 2 or more hands (6+ pts)',
       'reward': '×2 pts',
       'rewardDetail': 'points doubled',
       'emoji': '📈',
@@ -342,25 +342,19 @@ class _BettingScreenState extends State<BettingScreen> {
                                                   Container(
                                                     padding: const EdgeInsets
                                                         .symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 3),
+                                                        horizontal: 10,
+                                                        vertical: 5),
                                                     decoration: BoxDecoration(
-                                                      color: isSelected
-                                                          ? Colors.white
-                                                              .withValues(
-                                                                  alpha: 0.2)
-                                                          : Colors.white
-                                                              .withValues(
-                                                                  alpha: 0.08),
+                                                      color: AppTheme.gold
+                                                          .withValues(
+                                                              alpha: isSelected ? 0.3 : 0.18),
                                                       borderRadius:
                                                           BorderRadius.circular(
                                                               20),
                                                       border: Border.all(
-                                                        color: isSelected
-                                                            ? AppTheme.goldLight
-                                                                .withValues(
-                                                                    alpha: 0.7)
-                                                            : Colors.white24,
+                                                        color: AppTheme.goldLight
+                                                            .withValues(
+                                                                alpha: isSelected ? 0.9 : 0.55),
                                                         width: 1,
                                                       ),
                                                     ),
@@ -370,24 +364,16 @@ class _BettingScreenState extends State<BettingScreen> {
                                                       children: [
                                                         Icon(
                                                           Icons.star_rounded,
-                                                          size: 12,
-                                                          color: isSelected
-                                                              ? AppTheme
-                                                                  .goldLight
-                                                              : Colors.white38,
+                                                          size: 13,
+                                                          color: AppTheme.goldLight,
                                                         ),
                                                         const SizedBox(width: 4),
                                                         Text(
                                                           'If correct: ${option['reward']}',
-                                                          style: TextStyle(
-                                                            fontSize: 11,
-                                                            fontWeight:
-                                                                FontWeight.w600,
-                                                            color: isSelected
-                                                                ? AppTheme
-                                                                    .goldLight
-                                                                : Colors
-                                                                    .white38,
+                                                          style: const TextStyle(
+                                                            fontSize: 12,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: AppTheme.goldLight,
                                                           ),
                                                         ),
                                                       ],

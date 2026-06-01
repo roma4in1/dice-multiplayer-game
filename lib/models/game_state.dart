@@ -26,6 +26,7 @@ class GameState {
   final Map<String, dynamic> reactions;
   final List<String> rematchVotes;
   final String? rematchGameId;
+  final List<Map<String, dynamic>> chatMessages;
 
   const GameState({
     required this.gameId,
@@ -53,6 +54,7 @@ class GameState {
     this.reactions = const {},
     this.rematchVotes = const [],
     this.rematchGameId,
+    this.chatMessages = const [],
   });
 
   bool get isWaiting => status == GameStatus.waiting;
@@ -182,6 +184,9 @@ class GameState {
           ? List<String>.from(json['rematchVotes'])
           : [],
       rematchGameId: json['rematchGameId'] as String?,
+      chatMessages: (json['chatMessages'] as List<dynamic>? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
     );
   }
 }
