@@ -5,6 +5,7 @@ import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import 'home_screen.dart';
+import 'lobby_screen.dart';
 
 class GameEndScreen extends StatelessWidget {
   final String gameId;
@@ -273,12 +274,65 @@ class GameEndScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
+                      // Rematch button
+                      Builder(builder: (context) {
+                        final hasVoted =
+                            game.rematchVotes.contains(myPlayerId);
+                        final totalPlayers = players.length;
+                        final voteCount = game.rematchVotes.length;
+
+                        // If rematch game created, navigate all players
+                        if (game.rematchGameId != null && hasVoted) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                builder: (_) => LobbyScreen(
+                                    gameId: game.rematchGameId!),
+                              ),
+                              (route) => false,
+                            );
+                          });
+                        }
+
+                        return SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: hasVoted
+                                ? null
+                                : () => firestoreService.voteRematch(
+                                    gameId, myPlayerId, game),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor:
+                                  hasVoted ? Colors.white24 : AppTheme.gold,
+                              foregroundColor:
+                                  hasVoted ? Colors.white54 : AppTheme.navy,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: hasVoted
+                                ? Text(
+                                    'Waiting for rematch ($voteCount/$totalPlayers)...',
+                                    style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold),
+                                  )
+                                : const Text(
+                                    '🔄 Rematch',
+                                    style: TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 12),
                       SizedBox(
                         width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
+                        height: 48,
+                        child: OutlinedButton(
                           onPressed: () {
-                            // Navigate back to home and clear stack
                             Navigator.of(context).pushAndRemoveUntil(
                               MaterialPageRoute(
                                 builder: (context) => const HomeScreen(),
@@ -286,26 +340,22 @@ class GameEndScreen extends StatelessWidget {
                               (route) => false,
                             );
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue[700],
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.white30),
+                            foregroundColor: Colors.white70,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            'Back to Home',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
+                          child: const Text('Back to Home',
+                              style: TextStyle(fontSize: 16)),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       Text(
                         'Game ID: ${game.joinCode}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        style:
+                            const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ],
                   ),

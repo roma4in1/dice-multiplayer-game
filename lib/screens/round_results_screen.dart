@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../app_theme.dart';
+import '../models/dice_info.dart';
 import '../models/game_state.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../widgets/dice_widget.dart';
 
 class RoundResultsScreen extends StatefulWidget {
   final String gameId;
@@ -399,6 +401,10 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                   ),
                 ),
 
+                // ── Hidden Dice Reveal ───────────────────────────────
+                _HiddenDiceReveal(
+                    gameId: widget.gameId, players: players),
+
                 // ── Player Ready Status ──────────────────────────────
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -570,5 +576,137 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
       default:
         return '';
     }
+  }
+}
+
+class _HiddenDiceReveal extends StatefulWidget {
+  final String gameId;
+  final List<Player> players;
+
+  const _HiddenDiceReveal({required this.gameId, required this.players});
+
+  @override
+  State<_HiddenDiceReveal> createState() => _HiddenDiceRevealState();
+}
+
+class _HiddenDiceRevealState extends State<_HiddenDiceReveal> {
+  bool _revealed = false;
+  Map<String, PlayerDice?> _diceData = {};
+  bool _loading = false;
+
+  Future<void> _reveal() async {
+    setState(() => _loading = true);
+    final firestore = FirestoreService();
+    final results = <String, PlayerDice?>{};
+    for (final player in widget.players) {
+      try {
+        final data = await firestore
+            .getPlayerDiceStream(widget.gameId, player.id)
+            .first;
+        results[player.id] = data;
+      } catch (_) {
+        results[player.id] = null;
+      }
+    }
+    if (mounted) setState(() { _diceData = results; _revealed = true; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.25),
+        border: Border(
+          top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+      ),
+      child: AnimatedCrossFade(
+        duration: const Duration(milliseconds: 400),
+        crossFadeState: _revealed
+            ? CrossFadeState.showSecond
+            : CrossFadeState.showFirst,
+        firstChild: Padding(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _loading ? null : _reveal,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          color: AppTheme.gold, strokeWidth: 2))
+                  : const Icon(Icons.visibility, color: AppTheme.gold),
+              label: Text(
+                _loading ? 'Revealing...' : '👁 Reveal Hidden Dice',
+                style: const TextStyle(color: AppTheme.gold, fontSize: 15),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppTheme.gold),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ),
+        secondChild: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Hidden Dice Revealed',
+                      style: AppTheme.heading(size: 15, color: AppTheme.gold))
+                  .animate()
+                  .fadeIn(duration: 400.ms),
+              const SizedBox(height: 12),
+              ...widget.players.asMap().entries.map((entry) {
+                final i = entry.key;
+                final player = entry.value;
+                final dice = _diceData[player.id];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: AppTheme.navyLight,
+                        radius: 14,
+                        child: Text(player.name[0].toUpperCase(),
+                            style: const TextStyle(
+                                color: AppTheme.gold,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(player.name,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 14)),
+                      const SizedBox(width: 12),
+                      if (dice != null) ...[
+                        DiceWidget(
+                            value: dice.hiddenDice.red.value,
+                            size: 38,
+                            color: AppTheme.diceRed),
+                        const SizedBox(width: 6),
+                        DiceWidget(
+                            value: dice.hiddenDice.blue.value,
+                            size: 38,
+                            color: AppTheme.diceBlue),
+                      ] else
+                        const Text('—',
+                            style: TextStyle(color: Colors.white38)),
+                    ],
+                  ),
+                )
+                    .animate(delay: (i * 200).ms)
+                    .fadeIn(duration: 400.ms)
+                    .slideX(begin: 0.2, end: 0);
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

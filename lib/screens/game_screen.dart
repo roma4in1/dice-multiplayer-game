@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../app_theme.dart';
 import '../models/game_state.dart';
 import '../models/dice_info.dart';
+import '../models/hand_result.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
@@ -30,6 +32,92 @@ class _GameScreenState extends State<GameScreen> {
   bool _isRolling = false;
   final List<int> _selectedDiceIndices = [];
   bool _isSubmittingHand = false;
+
+  // Countdown timer
+  Timer? _turnTimer;
+  int _secondsLeft = 45;
+  String? _timedTurnFor;
+
+  // Floating reaction overlay
+  String? _floatingEmoji;
+  String? _floatingFromPlayer;
+  Timer? _reactionTimer;
+  Map<String, dynamic> _lastSeenReactions = {};
+
+  static const _emojis = ['😮', '🔥', '😤', '👏', '😭'];
+
+  @override
+  void dispose() {
+    _turnTimer?.cancel();
+    _reactionTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startCountdown(String turnPlayerId, PlayerDice myDice, GameState game) {
+    if (_timedTurnFor == turnPlayerId) return;
+    _timedTurnFor = turnPlayerId;
+    _secondsLeft = 45;
+    _turnTimer?.cancel();
+    _turnTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) {
+        t.cancel();
+        _autoSubmit(myDice, game);
+      }
+    });
+  }
+
+  void _resetCountdown() {
+    _turnTimer?.cancel();
+    _timedTurnFor = null;
+    if (mounted) setState(() => _secondsLeft = 45);
+  }
+
+  Future<void> _autoSubmit(PlayerDice myDice, GameState game) async {
+    final myId = _authService.currentUserId!;
+    if (game.handSubmissions.containsKey(myId)) return;
+    // Pick first 3 available dice
+    final available = myDice.allDice
+        .where((d) => !myDice.usedIndices.contains(d.index))
+        .take(3)
+        .map((d) => d.index)
+        .toList();
+    if (available.length < 3) return;
+    setState(() => _selectedDiceIndices
+      ..clear()
+      ..addAll(available));
+    await _submitHand();
+  }
+
+  void _checkReactions(GameState game, List<Player> players) {
+    final myId = _authService.currentUserId!;
+    for (final entry in game.reactions.entries) {
+      if (entry.key == myId) continue;
+      final data = entry.value as Map<String, dynamic>;
+      final ts = data['timestamp'] as String? ?? '';
+      final prev = _lastSeenReactions[entry.key];
+      if (prev == ts) continue;
+      _lastSeenReactions[entry.key] = ts;
+      final emoji = data['emoji'] as String? ?? '';
+      final sender = players.cast<Player?>().firstWhere(
+            (p) => p!.id == entry.key,
+            orElse: () => null,
+          );
+      _showReaction(emoji, sender?.name ?? 'Opponent');
+    }
+  }
+
+  void _showReaction(String emoji, String fromName) {
+    _reactionTimer?.cancel();
+    setState(() {
+      _floatingEmoji = emoji;
+      _floatingFromPlayer = fromName;
+    });
+    _reactionTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() { _floatingEmoji = null; _floatingFromPlayer = null; });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,13 +186,13 @@ class _GameScreenState extends State<GameScreen> {
           // Reset flag when hand evaluation is no longer complete
           if (!game.handEvaluationComplete && _hasShownHandResults) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                setState(() {
-                  _hasShownHandResults = false;
-                });
-              }
+              if (mounted) setState(() => _hasShownHandResults = false);
             });
           }
+
+          // Check for incoming reactions from opponents
+          WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _checkReactions(game, players));
 
           final isRollingPhase = game.status == GameStatus.rolling;
           final currentlyRolling = game.currentlyRolling;
@@ -114,7 +202,9 @@ class _GameScreenState extends State<GameScreen> {
           final isMyTurnToRoll =
               !haveIRolled && !_isRolling && currentlyRolling == null;
 
-          return Column(
+          return Stack(
+            children: [
+          Column(
             children: [
               // ── Game Status Header ───────────────────────────────────────
               Container(
@@ -206,7 +296,38 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
             ],
-          );
+          ),
+          // ── Floating reaction overlay ──────────────────────────────────
+          if (_floatingEmoji != null)
+            Positioned(
+              top: 80,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Column(
+                  children: [
+                    Text(
+                      _floatingEmoji!,
+                      style: const TextStyle(fontSize: 72),
+                    )
+                        .animate()
+                        .scale(
+                            begin: const Offset(0.3, 0.3),
+                            duration: 400.ms,
+                            curve: Curves.elasticOut)
+                        .then()
+                        .fadeOut(delay: 2.seconds, duration: 600.ms),
+                    Text(
+                      _floatingFromPlayer ?? '',
+                      style: const TextStyle(
+                          color: Colors.white70, fontSize: 14),
+                    ).animate().fadeIn(duration: 300.ms),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
         },
       ),
     );
@@ -406,7 +527,53 @@ class _GameScreenState extends State<GameScreen> {
             }).toList(),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+
+          // Live hand preview
+          if (_selectedDiceIndices.length == 3) ...[
+            Builder(builder: (context) {
+              final allDice = myDice.allDice;
+              final values = _selectedDiceIndices
+                  .map((i) => allDice
+                      .firstWhere((d) => d.index == i)
+                      .value)
+                  .toList();
+              final preview = HandEvaluator.evaluateHand('', '', values);
+              final rankEmoji = switch (preview.rank.displayName) {
+                'Triple'    => '🎯',
+                'Straight'  => '📈',
+                'Pair'      => '✌️',
+                _           => '🃏',
+              };
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.gold.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border:
+                      Border.all(color: AppTheme.gold.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(rankEmoji,
+                        style: const TextStyle(fontSize: 22)),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Hand: ${preview.rank.displayName}',
+                      style: AppTheme.heading(
+                          size: 16,
+                          color: AppTheme.gold,
+                          weight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+          ],
 
           // Submit Button
           SizedBox(
@@ -888,6 +1055,7 @@ class _GameScreenState extends State<GameScreen> {
       (p) => p.id == game.currentTurn,
       orElse: () => players.first,
     );
+    final alreadySubmitted = game.handSubmissions.containsKey(myPlayerId);
 
     return StreamBuilder<PlayerDice?>(
       stream: _firestoreService.getPlayerDiceStream(widget.gameId, myPlayerId),
@@ -908,6 +1076,15 @@ class _GameScreenState extends State<GameScreen> {
 
         final myDice = diceSnapshot.data!;
 
+        // Manage countdown
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (isMyTurn && !alreadySubmitted) {
+            _startCountdown(game.currentTurn!, myDice, game);
+          } else {
+            _resetCountdown();
+          }
+        });
+
         return StreamBuilder<Map<String, PublicPlayerData>>(
           stream: _firestoreService.getPublicDiceStream(widget.gameId),
           builder: (context, publicSnapshot) {
@@ -920,10 +1097,10 @@ class _GameScreenState extends State<GameScreen> {
             final opponents =
                 players.where((p) => p.id != myPlayerId).toList();
 
-            // Turn indicator widget
+            // Turn indicator with countdown
             Widget turnIndicator = Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: isMyTurn
                     ? AppTheme.gold.withValues(alpha: 0.15)
@@ -938,45 +1115,104 @@ class _GameScreenState extends State<GameScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    isMyTurn ? Icons.play_arrow : Icons.schedule,
-                    color: isMyTurn ? AppTheme.gold : Colors.white54,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    isMyTurn
-                        ? '🎯 YOUR TURN — Select 3 dice!'
-                        : '⏳ ${currentTurnPlayer.name}\'s turn...',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: isMyTurn ? AppTheme.gold : Colors.white70,
+                  if (isMyTurn && !alreadySubmitted) ...[
+                    SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CircularProgressIndicator(
+                            value: _secondsLeft / 45,
+                            color: _secondsLeft <= 10
+                                ? Colors.red
+                                : AppTheme.gold,
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.2),
+                            strokeWidth: 3,
+                          ),
+                          Center(
+                            child: Text(
+                              '$_secondsLeft',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _secondsLeft <= 10
+                                    ? Colors.red
+                                    : AppTheme.gold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Flexible(
+                    child: Text(
+                      isMyTurn
+                          ? '🎯 YOUR TURN — Select 3 dice!'
+                          : '${currentTurnPlayer.name} is thinking',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: isMyTurn ? AppTheme.gold : Colors.white70,
+                      ),
                     ),
                   ),
+                  if (!isMyTurn) ...[
+                    const SizedBox(width: 8),
+                    const _ThinkingDots(),
+                  ],
                 ],
               ),
             );
 
-            if (isMyTurn) {
+            if (isMyTurn && !alreadySubmitted) {
               turnIndicator = turnIndicator
                   .animate(onPlay: (c) => c.repeat(reverse: true))
                   .fade(begin: 0.75, end: 1.0, duration: 900.ms);
             }
 
+            // Emoji reaction bar
+            final emojiBar = Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.black.withValues(alpha: 0.2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: _emojis.map((emoji) {
+                  return GestureDetector(
+                    onTap: () => _firestoreService.sendReaction(
+                        widget.gameId, myPlayerId, emoji),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Center(
+                        child: Text(emoji,
+                            style: const TextStyle(fontSize: 22)),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            );
+
             return SingleChildScrollView(
               child: Column(
                 children: [
                   turnIndicator,
+                  emojiBar,
+                  const SizedBox(height: 12),
 
-                  const SizedBox(height: 16),
-
-                  // Game Table - Show submitted hands
                   _buildGameTable(game, players),
-
                   const SizedBox(height: 16),
 
-                  // Opponents Section
                   if (opponents.isNotEmpty) ...[
                     Text('Opponents', style: AppTheme.heading(size: 18)),
                     const SizedBox(height: 12),
@@ -991,7 +1227,6 @@ class _GameScreenState extends State<GameScreen> {
                   const Divider(color: Colors.white24, thickness: 1),
                   const SizedBox(height: 16),
 
-                  // Your Dice Section with Selection
                   Text('Your Dice',
                       style: AppTheme.display(size: 20, color: Colors.white)),
                   const SizedBox(height: 16),
@@ -1202,5 +1437,43 @@ class _GameScreenState extends State<GameScreen> {
         ],
       ),
     );
+  }
+}
+
+class _ThinkingDots extends StatefulWidget {
+  const _ThinkingDots();
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  int _dot = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500))
+      ..addListener(() {
+        if (mounted) setState(() => _dot = (_dot + 1) % 4);
+      })
+      ..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dots = '.' * _dot;
+    return Text(dots,
+        style: const TextStyle(
+            fontSize: 20, color: Colors.white54, letterSpacing: 2));
   }
 }

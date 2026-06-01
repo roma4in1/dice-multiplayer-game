@@ -23,6 +23,9 @@ class GameState {
   final Map<String, dynamic> publicPlayerData;
   final List<String> playersReadyToContinue;
   final Map<String, int> currentRoundPoints;
+  final Map<String, dynamic> reactions;
+  final List<String> rematchVotes;
+  final String? rematchGameId;
 
   const GameState({
     required this.gameId,
@@ -47,6 +50,9 @@ class GameState {
     this.publicPlayerData = const {},
     this.playersReadyToContinue = const [],
     this.currentRoundPoints = const {},
+    this.reactions = const {},
+    this.rematchVotes = const [],
+    this.rematchGameId,
   });
 
   bool get isWaiting => status == GameStatus.waiting;
@@ -171,6 +177,11 @@ class GameState {
       currentRoundPoints: json['currentRoundPoints'] != null
           ? Map<String, int>.from(json['currentRoundPoints'])
           : {},
+      reactions: json['reactions'] as Map<String, dynamic>? ?? {},
+      rematchVotes: json['rematchVotes'] != null
+          ? List<String>.from(json['rematchVotes'])
+          : [],
+      rematchGameId: json['rematchGameId'] as String?,
     );
   }
 }

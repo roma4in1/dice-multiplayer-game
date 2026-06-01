@@ -185,8 +185,10 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 ),
 
                 // Bottom Actions
-                Container(
-                  padding: const EdgeInsets.all(16),
+                SafeArea(
+                  top: false,
+                  child: Container(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                   child: Column(
                     children: [
                       if (!isHost)
@@ -245,6 +247,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                         ),
                       ],
                     ],
+                  ),
                   ),
                 ),
               ],

@@ -857,4 +857,78 @@ class FirestoreService {
       // ignore: best-effort cleanup
     }
   }
+
+  Future<void> sendReaction(
+      String gameId, String playerId, String emoji) async {
+    try {
+      await _firestore.collection('games').doc(gameId).update({
+        'reactions.$playerId': {
+          'emoji': emoji,
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+      });
+    } catch (e) {
+      // ignore: best-effort
+    }
+  }
+
+  Future<void> voteRematch(String gameId, String playerId,
+      GameState game) async {
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      final players = game.players;
+      final newVotes = [...game.rematchVotes, playerId];
+
+      if (newVotes.length >= players.length) {
+        // All voted — create new game
+        final newRef = _firestore.collection('games').doc();
+        final newJoinCode = _generateJoinCode();
+        final hostId = game.hostId;
+
+        final initialPlayers = <String, dynamic>{};
+        for (final entry in players.entries) {
+          final p = Map<String, dynamic>.from(entry.value as Map);
+          p['isReady'] = p['id'] == hostId;
+          p['currentBet'] = null;
+          p['totalPoints'] = 0;
+          initialPlayers[entry.key] = p;
+        }
+
+        await newRef.set({
+          'gameId': newRef.id,
+          'hostId': hostId,
+          'joinCode': newJoinCode,
+          'status': 'waiting',
+          'maxPlayers': game.maxPlayers,
+          'totalRounds': game.totalRounds,
+          'currentRound': 0,
+          'currentHand': 0,
+          'players': initialPlayers,
+          'createdAt': DateTime.now().toIso8601String(),
+          'playersWhoRolled': [],
+          'turnOrder': [],
+          'handSubmissions': {},
+          'handResults': {},
+          'handWinners': [],
+          'handEvaluationComplete': false,
+          'publicPlayerData': {},
+          'playersReadyToContinue': [],
+          'currentRoundPoints': {},
+          'reactions': {},
+          'rematchVotes': [],
+        });
+
+        await gameRef.update({
+          'rematchVotes': newVotes,
+          'rematchGameId': newRef.id,
+        });
+      } else {
+        await gameRef.update({
+          'rematchVotes': FieldValue.arrayUnion([playerId]),
+        });
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
 }
