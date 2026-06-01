@@ -56,12 +56,14 @@ class _GameScreenState extends State<GameScreen> {
     _timedTurnFor = turnPlayerId;
     _secondsLeft = 45;
     _turnTimer?.cancel();
+    final isMyTurnToAutoSubmit = turnPlayerId == _authService.currentUserId;
     _turnTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _secondsLeft--);
       if (_secondsLeft <= 0) {
         t.cancel();
-        _autoSubmit(myDice, game);
+        // Only auto-submit for the player whose turn it actually is
+        if (isMyTurnToAutoSubmit) _autoSubmit(myDice, game);
       }
     });
   }
@@ -327,16 +329,22 @@ class _GameScreenState extends State<GameScreen> {
                 ),
               ),
             ),
-          // ── Emoji chat panel (bottom-left) ─────────────────────────────
+          // ── Emoji chat panel (bottom-left, safe area aware) ───────────
           Positioned(
-            bottom: 12,
-            left: 12,
-            child: _EmojiChatPanel(
-              gameId: widget.gameId,
-              myPlayerId: myPlayerId,
-              myPlayerName: myPlayerName,
-              chatMessages: game.chatMessages,
-              firestoreService: _firestoreService,
+            bottom: 0,
+            left: 0,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12, left: 12),
+                child: _EmojiChatPanel(
+                  gameId: widget.gameId,
+                  myPlayerId: myPlayerId,
+                  myPlayerName: myPlayerName,
+                  chatMessages: game.chatMessages,
+                  firestoreService: _firestoreService,
+                ),
+              ),
             ),
           ),
           ],
@@ -1091,9 +1099,9 @@ class _GameScreenState extends State<GameScreen> {
 
         final myDice = diceSnapshot.data!;
 
-        // Manage countdown
+        // Countdown runs for everyone so both players can see it
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (isMyTurn && !alreadySubmitted) {
+          if (game.currentTurn != null && !game.handEvaluationComplete) {
             _startCountdown(game.currentTurn!, myDice, game);
           } else {
             _resetCountdown();
@@ -1112,14 +1120,17 @@ class _GameScreenState extends State<GameScreen> {
             final opponents =
                 players.where((p) => p.id != myPlayerId).toList();
 
-            // Turn indicator with countdown
-            Widget turnIndicator = Container(
+            final timerColor = _secondsLeft <= 10 ? Colors.red : AppTheme.gold;
+            final showTimer = game.currentTurn != null && !game.handEvaluationComplete;
+
+            // Sticky turn header — sits above the scroll view, always visible
+            Widget turnHeader = Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: isMyTurn
                     ? AppTheme.gold.withValues(alpha: 0.15)
-                    : Colors.black.withValues(alpha: 0.2),
+                    : Colors.black.withValues(alpha: 0.25),
                 border: Border(
                   bottom: BorderSide(
                     color: isMyTurn ? AppTheme.gold : Colors.white30,
@@ -1130,7 +1141,8 @@ class _GameScreenState extends State<GameScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (isMyTurn && !alreadySubmitted) ...[
+                  // Timer ring — visible to EVERYONE while a turn is active
+                  if (showTimer && !alreadySubmitted) ...[
                     SizedBox(
                       width: 36,
                       height: 36,
@@ -1139,11 +1151,8 @@ class _GameScreenState extends State<GameScreen> {
                         children: [
                           CircularProgressIndicator(
                             value: _secondsLeft / 45,
-                            color: _secondsLeft <= 10
-                                ? Colors.red
-                                : AppTheme.gold,
-                            backgroundColor:
-                                Colors.white.withValues(alpha: 0.2),
+                            color: timerColor,
+                            backgroundColor: Colors.white.withValues(alpha: 0.2),
                             strokeWidth: 3,
                           ),
                           Center(
@@ -1152,9 +1161,7 @@ class _GameScreenState extends State<GameScreen> {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
-                                color: _secondsLeft <= 10
-                                    ? Colors.red
-                                    : AppTheme.gold,
+                                color: timerColor,
                               ),
                             ),
                           ),
@@ -1163,11 +1170,11 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${_secondsLeft}s left',
+                      '${_secondsLeft}s',
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: _secondsLeft <= 10 ? Colors.red : AppTheme.gold,
+                        color: timerColor,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1176,9 +1183,9 @@ class _GameScreenState extends State<GameScreen> {
                     child: Text(
                       isMyTurn
                           ? '🎯 YOUR TURN — Select 3 dice!'
-                          : '${currentTurnPlayer.name} is thinking',
+                          : '${currentTurnPlayer.name} is choosing...',
                       style: TextStyle(
-                        fontSize: 17,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: isMyTurn ? AppTheme.gold : Colors.white70,
                       ),
@@ -1193,16 +1200,19 @@ class _GameScreenState extends State<GameScreen> {
             );
 
             if (isMyTurn && !alreadySubmitted) {
-              turnIndicator = turnIndicator
+              turnHeader = turnHeader
                   .animate(onPlay: (c) => c.repeat(reverse: true))
                   .fade(begin: 0.75, end: 1.0, duration: 900.ms);
             }
 
-            return SingleChildScrollView(
-              child: Column(
-                children: [
-                  turnIndicator,
-                  const SizedBox(height: 12),
+            return Column(
+              children: [
+                turnHeader,  // sticky — not inside the scroll view
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 12),
 
                   _buildGameTable(game, players),
                   const SizedBox(height: 16),
@@ -1227,8 +1237,11 @@ class _GameScreenState extends State<GameScreen> {
                   _buildYourDiceWithSelection(myDice, isMyTurn, game),
                   const SizedBox(height: 20),
                 ],
-              ),
-            );
+              ),          // inner Column
+            ),            // SingleChildScrollView
+          ),              // Expanded
+        ],
+      );                  // outer Column (return)
           },
         );
       },

@@ -289,30 +289,28 @@ class _BettingScreenState extends State<BettingScreen> {
                                                 ]
                                               : [],
                                         ),
-                                        padding: const EdgeInsets.all(18),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 14, vertical: 14),
                                         child: Row(
                                           children: [
-                                            // Large emoji in circle
+                                            // Emoji circle
                                             Container(
-                                              width: 60,
-                                              height: 60,
+                                              width: 52,
+                                              height: 52,
                                               decoration: BoxDecoration(
                                                 color: isSelected
-                                                    ? Colors.white
-                                                        .withValues(alpha: 0.2)
-                                                    : Colors.white
-                                                        .withValues(alpha: 0.08),
+                                                    ? Colors.white.withValues(alpha: 0.2)
+                                                    : Colors.white.withValues(alpha: 0.08),
                                                 shape: BoxShape.circle,
                                               ),
                                               child: Center(
-                                                child: Text(
-                                                  option['emoji'],
-                                                  style: const TextStyle(
-                                                      fontSize: 30),
-                                                ),
+                                                child: Text(option['emoji'],
+                                                    style: const TextStyle(fontSize: 26)),
                                               ),
                                             ),
-                                            const SizedBox(width: 16),
+                                            const SizedBox(width: 12),
+
+                                            // Title + description
                                             Expanded(
                                               child: Column(
                                                 crossAxisAlignment:
@@ -321,79 +319,73 @@ class _BettingScreenState extends State<BettingScreen> {
                                                   Text(
                                                     option['title'],
                                                     style: AppTheme.heading(
-                                                      size: 18,
+                                                      size: 16,
                                                       color: isSelected
                                                           ? Colors.white
                                                           : Colors.white70,
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 4),
+                                                  const SizedBox(height: 3),
                                                   Text(
                                                     option['description'],
                                                     style: TextStyle(
-                                                      fontSize: 12,
+                                                      fontSize: 11,
                                                       color: isSelected
-                                                          ? Colors.white70
+                                                          ? Colors.white60
                                                           : Colors.white38,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 8),
-                                                  // Reward badge
-                                                  Container(
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 5),
-                                                    decoration: BoxDecoration(
-                                                      color: AppTheme.gold
-                                                          .withValues(
-                                                              alpha: isSelected ? 0.3 : 0.18),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              20),
-                                                      border: Border.all(
-                                                        color: AppTheme.goldLight
-                                                            .withValues(
-                                                                alpha: isSelected ? 0.9 : 0.55),
-                                                        width: 1,
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisSize:
-                                                          MainAxisSize.min,
-                                                      children: [
-                                                        Icon(
-                                                          Icons.star_rounded,
-                                                          size: 13,
-                                                          color: AppTheme.goldLight,
-                                                        ),
-                                                        const SizedBox(width: 4),
-                                                        Text(
-                                                          'If correct: ${option['reward']}',
-                                                          style: const TextStyle(
-                                                            fontSize: 12,
-                                                            fontWeight: FontWeight.bold,
-                                                            color: AppTheme.goldLight,
-                                                          ),
-                                                        ),
-                                                      ],
                                                     ),
                                                   ),
                                                 ],
                                               ),
                                             ),
-                                            if (isSelected)
-                                              Container(
-                                                width: 28,
-                                                height: 28,
-                                                decoration: const BoxDecoration(
-                                                  color: Colors.white,
-                                                  shape: BoxShape.circle,
+                                            const SizedBox(width: 10),
+
+                                            // Reward pill — fixed right, always visible
+                                            Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                      horizontal: 10, vertical: 6),
+                                                  decoration: BoxDecoration(
+                                                    color: isSelected
+                                                        ? AppTheme.gold.withValues(alpha: 0.35)
+                                                        : AppTheme.gold.withValues(alpha: 0.2),
+                                                    borderRadius:
+                                                        BorderRadius.circular(20),
+                                                    border: Border.all(
+                                                      color: AppTheme.gold,
+                                                      width: 1.5,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    option['reward'] as String,
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isSelected
+                                                          ? Colors.white
+                                                          : AppTheme.goldLight,
+                                                    ),
+                                                  ),
                                                 ),
-                                                child: Icon(Icons.check,
-                                                    color: gradColors.last,
-                                                    size: 18),
-                                              ),
+                                                if (isSelected) ...[
+                                                  const SizedBox(height: 6),
+                                                  Container(
+                                                    width: 24,
+                                                    height: 24,
+                                                    decoration: const BoxDecoration(
+                                                      color: Colors.white,
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: Icon(Icons.check,
+                                                        color: gradColors.last,
+                                                        size: 16),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
                                           ],
                                         ),
                                       ),
