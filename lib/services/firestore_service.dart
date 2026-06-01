@@ -488,6 +488,7 @@ class FirestoreService {
       } else {
         // Advance to next player's turn
         final currentIndex = turnOrder.indexOf(playerId);
+        if (currentIndex < 0) return; // player not in turn order — corrupted state
         final nextIndex = (currentIndex + 1) % turnOrder.length;
         final nextPlayerId = turnOrder[nextIndex];
 
@@ -569,6 +570,24 @@ class FirestoreService {
       }
     }
 
+    // Track handsWon and bestHandRank per winner
+    const rankOrder = ['highCard', 'pair', 'straight', 'triple'];
+    final statsUpdate = <String, dynamic>{};
+    for (final winnerId in winnerIds) {
+      final rankStr =
+          handResults[winnerId]!.rank.toString().split('.').last;
+      final playerData = players[winnerId] as Map<String, dynamic>;
+      final currentBest =
+          playerData['bestHandRank'] as String? ?? 'highCard';
+      final newBest =
+          (rankOrder.indexOf(rankStr) > rankOrder.indexOf(currentBest))
+              ? rankStr
+              : currentBest;
+      statsUpdate['players.$winnerId.handsWon'] =
+          (playerData['handsWon'] as int? ?? 0) + 1;
+      statsUpdate['players.$winnerId.bestHandRank'] = newBest;
+    }
+
     // Store results (without updating totalPoints - that happens in _evaluateRoundBets)
     await _firestore.collection('games').doc(gameId).update({
       'handResults': handResults.map((k, v) => MapEntry(k, v.toJson())),
@@ -578,6 +597,7 @@ class FirestoreService {
       'currentTurn': null,
       'playersReadyToContinue': [],
       'currentRoundPoints': currentRoundPoints,
+      ...statsUpdate,
     });
   }
 
@@ -747,6 +767,12 @@ class FirestoreService {
         }
       }
 
+      // Track betsWon
+      if (betSuccess) {
+        pointsUpdate['players.$playerId.betsWon'] =
+            (player['betsWon'] as int? ?? 0) + 1;
+      }
+
       // Add to total points
       final currentTotal = player['totalPoints'] as int? ?? 0;
       pointsUpdate['players.$playerId.totalPoints'] =
@@ -806,6 +832,21 @@ class FirestoreService {
           });
         }
       }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Kick a player (host only) — reuses the same removal logic as leaveGame
+  Future<void> kickPlayer(String gameId, String playerId) async {
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      final gameDoc = await gameRef.get();
+      if (!gameDoc.exists) return;
+      final players =
+          Map<String, dynamic>.from(gameDoc.data()!['players'] as Map);
+      players.remove(playerId);
+      await gameRef.update({'players': players});
     } catch (e) {
       rethrow;
     }
@@ -886,9 +927,11 @@ class FirestoreService {
       });
 
       if (shouldCreate) {
-        // All players voted — create new game using the passed game snapshot for settings
-        final players = game.players;
-        final hostId = game.hostId;
+        // Read fresh so we never carry a since-kicked player into the rematch
+        final freshDoc = await gameRef.get();
+        final freshData = freshDoc.data()!;
+        final players = freshData['players'] as Map<String, dynamic>;
+        final hostId = freshData['hostId'] as String;
         final newRef = _firestore.collection('games').doc();
         final newJoinCode = _generateJoinCode();
 
@@ -898,6 +941,9 @@ class FirestoreService {
           p['isReady'] = p['id'] == hostId;
           p['currentBet'] = null;
           p['totalPoints'] = 0;
+          p['handsWon'] = 0;
+          p['betsWon'] = 0;
+          p['bestHandRank'] = 'highCard';
           initialPlayers[entry.key] = p;
         }
 
@@ -906,8 +952,8 @@ class FirestoreService {
           'hostId': hostId,
           'joinCode': newJoinCode,
           'status': 'waiting',
-          'maxPlayers': game.maxPlayers,
-          'totalRounds': game.totalRounds,
+          'maxPlayers': freshData['maxPlayers'] as int? ?? 8,
+          'totalRounds': freshData['totalRounds'] as int? ?? 3,
           'currentRound': 0,
           'currentHand': 0,
           'players': initialPlayers,

@@ -85,7 +85,7 @@ class PlayerCard extends StatelessWidget {
                   player.isHost ? AppTheme.gold : AppTheme.navyLight,
               radius: _getAvatarRadius(),
               child: Text(
-                player.name[0].toUpperCase(),
+                player.nameInitial,
                 style: TextStyle(
                   color: player.isHost ? AppTheme.navy : Colors.white,
                   fontWeight: FontWeight.bold,

@@ -164,7 +164,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                             backgroundColor: Colors.blue,
                             radius: 20,
                             child: Text(
-                              player.name[0].toUpperCase(),
+                              player.nameInitial,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -263,7 +263,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                               ? Colors.green
                               : Colors.grey[300],
                           child: Text(
-                            player.name[0].toUpperCase(),
+                            player.nameInitial,
                             style: TextStyle(
                               color: isReady ? Colors.white : Colors.grey[600],
                               fontSize: 10,

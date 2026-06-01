@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../app_theme.dart';
-import '../models/dice_info.dart';
 import '../models/game_state.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
-import '../widgets/dice_widget.dart';
+import '../services/sound_service.dart';
 
 class RoundResultsScreen extends StatefulWidget {
   final String gameId;
@@ -19,6 +18,7 @@ class RoundResultsScreen extends StatefulWidget {
 
 class _RoundResultsScreenState extends State<RoundResultsScreen> {
   bool _hasNavigated = false;
+  bool _soundPlayed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -108,6 +108,23 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
           }
 
           final isLastRound = game.currentRound >= game.totalRounds;
+
+          // Play bet sound once for the local player
+          if (!_soundPlayed) {
+            _soundPlayed = true;
+            final myResult = betResults[myPlayerId];
+            if (myResult != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (isLastRound) {
+                  SoundService.gameEnd();
+                } else if (myResult['betSuccess'] as bool) {
+                  SoundService.betWon();
+                } else {
+                  SoundService.betLost();
+                }
+              });
+            }
+          }
 
           return Container(
             decoration:
@@ -227,7 +244,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                                   backgroundColor: AppTheme.navyLight,
                                   radius: 18,
                                   child: Text(
-                                    player.name[0].toUpperCase(),
+                                    player.nameInitial,
                                     style: TextStyle(
                                       color: isFirst
                                           ? AppTheme.gold
@@ -401,9 +418,8 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                   ),
                 ),
 
-                // ── Hidden Dice Reveal ───────────────────────────────
-                _HiddenDiceReveal(
-                    gameId: widget.gameId, players: players),
+                // ── End-of-game stats (last round only) ─────────────
+                if (isLastRound) _buildGameStats(players),
 
                 // ── Player Ready Status ──────────────────────────────
                 Container(
@@ -440,7 +456,7 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                                 ? Colors.greenAccent
                                 : Colors.white24,
                             child: Text(
-                              player.name[0].toUpperCase(),
+                              player.nameInitial,
                               style: TextStyle(
                                 color: isReady
                                     ? AppTheme.navy
@@ -466,11 +482,18 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
                       onPressed: iAmReady
                           ? null
                           : () async {
-                              await firestoreService
-                                  .markPlayerReadyToContinue(
-                                widget.gameId,
-                                myPlayerId,
-                              );
+                              final messenger = ScaffoldMessenger.of(context);
+                              try {
+                                await firestoreService
+                                    .markPlayerReadyToContinue(
+                                  widget.gameId,
+                                  myPlayerId,
+                                ).timeout(const Duration(seconds: 12));
+                              } catch (e) {
+                                messenger.showSnackBar(const SnackBar(
+                                  content: Text('Connection slow — please try again'),
+                                ));
+                              }
                             },
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
@@ -511,6 +534,112 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
     );
   }
 
+  Widget _buildGameStats(List<Player> players) {
+    const rankLabel = {
+      'highCard': 'High Card',
+      'pair': 'Pair',
+      'straight': 'Straight',
+      'triple': 'Triple',
+    };
+    const rankEmoji = {
+      'highCard': '🃏',
+      'pair': '✌️',
+      'straight': '📈',
+      'triple': '🎯',
+    };
+
+    final sorted = [...players]
+      ..sort((a, b) => b.totalPoints.compareTo(a.totalPoints));
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.2),
+        border: Border(
+          top: BorderSide(color: AppTheme.gold.withValues(alpha: 0.3)),
+          bottom: BorderSide(color: AppTheme.gold.withValues(alpha: 0.3)),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bar_chart, color: AppTheme.gold, size: 18),
+              const SizedBox(width: 8),
+              Text('Game Stats',
+                  style: AppTheme.heading(size: 15, color: AppTheme.gold)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...sorted.asMap().entries.map((e) {
+            final i = e.key;
+            final p = e.value;
+            final best = rankLabel[p.bestHandRank] ?? 'High Card';
+            final emoji = rankEmoji[p.bestHandRank] ?? '🃏';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Text('${i + 1}.',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: i == 0 ? AppTheme.gold : Colors.white54)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(p.name,
+                        style: const TextStyle(
+                            fontSize: 14, color: Colors.white70)),
+                  ),
+                  _statChip(Icons.back_hand_outlined,
+                      '${p.handsWon} wins', Colors.greenAccent),
+                  const SizedBox(width: 6),
+                  _statChip(Icons.casino_outlined,
+                      '${p.betsWon} bets', AppTheme.gold),
+                  const SizedBox(width: 6),
+                  Text(emoji,
+                      style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 4),
+                  Text(best,
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.white54)),
+                ],
+              )
+                  .animate(delay: (i * 80).ms)
+                  .fadeIn(duration: 300.ms)
+                  .slideX(begin: 0.1, end: 0),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _statChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: color)),
+        ],
+      ),
+    );
+  }
+
   bool _evaluateBet(
     String bet,
     int roundPoints,
@@ -521,9 +650,11 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
       case 'zero':
         return roundPoints == 0;
       case 'minimum':
-        return roundPoints >= 3 && roundPoints <= 9;
+        // Won exactly 1 hand: solo win = 5 pts max, tied win = 3 pts
+        return roundPoints > 0 && roundPoints <= 5;
       case 'maximum':
-        return roundPoints >= 10;
+        // Won 2+ hands: minimum possible is two tied wins = 3+3 = 6 pts
+        return roundPoints >= 6;
       case 'winner':
         final allRoundPoints = game.currentRoundPoints;
         if (allRoundPoints.isEmpty) return false;
@@ -579,134 +710,3 @@ class _RoundResultsScreenState extends State<RoundResultsScreen> {
   }
 }
 
-class _HiddenDiceReveal extends StatefulWidget {
-  final String gameId;
-  final List<Player> players;
-
-  const _HiddenDiceReveal({required this.gameId, required this.players});
-
-  @override
-  State<_HiddenDiceReveal> createState() => _HiddenDiceRevealState();
-}
-
-class _HiddenDiceRevealState extends State<_HiddenDiceReveal> {
-  bool _revealed = false;
-  Map<String, PlayerDice?> _diceData = {};
-  bool _loading = false;
-
-  Future<void> _reveal() async {
-    setState(() => _loading = true);
-    final firestore = FirestoreService();
-    final results = <String, PlayerDice?>{};
-    for (final player in widget.players) {
-      try {
-        final data = await firestore
-            .getPlayerDiceStream(widget.gameId, player.id)
-            .first;
-        results[player.id] = data;
-      } catch (_) {
-        results[player.id] = null;
-      }
-    }
-    if (mounted) setState(() { _diceData = results; _revealed = true; _loading = false; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.25),
-        border: Border(
-          top: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-        ),
-      ),
-      child: AnimatedCrossFade(
-        duration: const Duration(milliseconds: 400),
-        crossFadeState: _revealed
-            ? CrossFadeState.showSecond
-            : CrossFadeState.showFirst,
-        firstChild: Padding(
-          padding: const EdgeInsets.all(12),
-          child: SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _loading ? null : _reveal,
-              icon: _loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          color: AppTheme.gold, strokeWidth: 2))
-                  : const Icon(Icons.visibility, color: AppTheme.gold),
-              label: Text(
-                _loading ? 'Revealing...' : '👁 Reveal Hidden Dice',
-                style: const TextStyle(color: AppTheme.gold, fontSize: 15),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppTheme.gold),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
-        ),
-        secondChild: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Hidden Dice Revealed',
-                      style: AppTheme.heading(size: 15, color: AppTheme.gold))
-                  .animate()
-                  .fadeIn(duration: 400.ms),
-              const SizedBox(height: 12),
-              ...widget.players.asMap().entries.map((entry) {
-                final i = entry.key;
-                final player = entry.value;
-                final dice = _diceData[player.id];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: AppTheme.navyLight,
-                        radius: 14,
-                        child: Text(player.name[0].toUpperCase(),
-                            style: const TextStyle(
-                                color: AppTheme.gold,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold)),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(player.name,
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 14)),
-                      const SizedBox(width: 12),
-                      if (dice != null) ...[
-                        DiceWidget(
-                            value: dice.hiddenDice.red.value,
-                            size: 38,
-                            color: AppTheme.diceRed),
-                        const SizedBox(width: 6),
-                        DiceWidget(
-                            value: dice.hiddenDice.blue.value,
-                            size: 38,
-                            color: AppTheme.diceBlue),
-                      ] else
-                        const Text('—',
-                            style: TextStyle(color: Colors.white38)),
-                    ],
-                  ),
-                )
-                    .animate(delay: (i * 200).ms)
-                    .fadeIn(duration: 400.ms)
-                    .slideX(begin: 0.2, end: 0);
-              }),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

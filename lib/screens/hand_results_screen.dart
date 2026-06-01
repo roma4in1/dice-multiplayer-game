@@ -6,6 +6,7 @@ import '../models/hand_result.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/sound_service.dart';
 import '../widgets/dice_widget.dart';
 import '../widgets/player_card.dart';
 import 'round_results_screen.dart';
@@ -24,6 +25,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
   int? _initialHand;
   bool _hasNavigatedToRoundResults = false;
   bool _isNavigating = false;
+  bool _soundPlayed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +120,18 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                 ? game.handWinners
                 : (game.handWinner != null ? [game.handWinner!] : <String>[]);
             final isTie = winnerIds.length > 1;
+
+            // Play win/lose sound once when results first arrive
+            if (!_soundPlayed && winnerIds.isNotEmpty) {
+              _soundPlayed = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (winnerIds.contains(myPlayerId)) {
+                  SoundService.handWin();
+                } else {
+                  SoundService.handLose();
+                }
+              });
+            }
 
             final playersReady = game.playersReadyToContinue;
             final iAmReady = playersReady.contains(myPlayerId);
@@ -357,7 +371,7 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                                   ? Colors.greenAccent
                                   : Colors.white24,
                               child: Text(
-                                player.name[0].toUpperCase(),
+                                player.nameInitial,
                                 style: TextStyle(
                                   color: isReady
                                       ? AppTheme.navy
@@ -383,11 +397,18 @@ class _HandResultsScreenState extends State<HandResultsScreen> {
                         onPressed: iAmReady
                             ? null
                             : () async {
-                                await firestoreService
-                                    .markPlayerReadyToContinue(
-                                  widget.gameId,
-                                  myPlayerId,
-                                );
+                                final messenger = ScaffoldMessenger.of(context);
+                                try {
+                                  await firestoreService
+                                      .markPlayerReadyToContinue(
+                                    widget.gameId,
+                                    myPlayerId,
+                                  ).timeout(const Duration(seconds: 12));
+                                } catch (e) {
+                                  messenger.showSnackBar(const SnackBar(
+                                    content: Text('Connection slow — please try again'),
+                                  ));
+                                }
                               },
                         style: ElevatedButton.styleFrom(
                           backgroundColor:

@@ -200,7 +200,7 @@ class GameEndScreen extends StatelessWidget {
                               backgroundColor: Colors.blue,
                               radius: 25,
                               child: Text(
-                                player.name[0].toUpperCase(),
+                                player.nameInitial,
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,

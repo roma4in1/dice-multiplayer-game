@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../app_theme.dart';
@@ -5,6 +6,7 @@ import '../models/game_state.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/name_service.dart';
 import '../widgets/player_card.dart';
 import 'game_screen.dart';
 import '../widgets/rule_book_button.dart';
@@ -158,6 +160,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 14),
+                      // Copy invite link
+                      OutlinedButton.icon(
+                        onPressed: () => _copyInviteLink(game.joinCode),
+                        icon: const Icon(Icons.link, size: 16, color: AppTheme.gold),
+                        label: const Text('Copy Invite Link',
+                            style: TextStyle(color: AppTheme.gold, fontSize: 13)),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppTheme.gold.withValues(alpha: 0.5)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -170,15 +184,29 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     itemBuilder: (context, index) {
                       final player = players[index];
                       final isMe = player.id == _authService.currentUserId;
+                      final canKick = isHost && !isMe && !player.isHost;
 
-                      return PlayerCard(
-                        player: player,
-                        style: PlayerCardStyle.lobby,
-                        isMe: isMe,
-                        isReady: player.isReady,
-                        onEditName: isMe
-                            ? () => _showEditNameDialog(player)
-                            : null,
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: PlayerCard(
+                              player: player,
+                              style: PlayerCardStyle.lobby,
+                              isMe: isMe,
+                              isReady: player.isReady,
+                              onEditName: isMe
+                                  ? () => _showEditNameDialog(player)
+                                  : null,
+                            ),
+                          ),
+                          if (canKick)
+                            IconButton(
+                              icon: const Icon(Icons.person_remove,
+                                  color: Colors.redAccent, size: 20),
+                              tooltip: 'Kick player',
+                              onPressed: () => _kickPlayer(player),
+                            ),
+                        ],
                       );
                     },
                   ),
@@ -320,6 +348,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 return;
               }
 
+              // Capture context-dependent objects before the async gap
+              final nav = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+
+              NameService.save(newName);
               await _firestoreService.updatePlayerName(
                 widget.gameId,
                 player.id,
@@ -327,8 +360,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
               );
 
               if (mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
+                nav.pop();
+                messenger.showSnackBar(
                   SnackBar(content: Text('Username changed to $newName')),
                 );
               }
@@ -338,6 +371,47 @@ class _LobbyScreenState extends State<LobbyScreen> {
         ],
       ),
     );
+  }
+
+  void _copyInviteLink(String joinCode) {
+    String link;
+    if (kIsWeb) {
+      link = Uri.base
+          .replace(queryParameters: {'join': joinCode})
+          .toString();
+    } else {
+      link = joinCode;
+    }
+    Clipboard.setData(ClipboardData(text: link));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Invite link copied!'), duration: Duration(seconds: 2)),
+    );
+  }
+
+  Future<void> _kickPlayer(Player player) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.cardIvory,
+        title: Text('Kick ${player.name}?',
+            style: AppTheme.heading(color: AppTheme.navy)),
+        content: Text('${player.name} will be removed from the lobby.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.danger, foregroundColor: Colors.white),
+            child: const Text('Kick'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _firestoreService.kickPlayer(widget.gameId, player.id);
   }
 
   Future<void> _leaveGame() async {

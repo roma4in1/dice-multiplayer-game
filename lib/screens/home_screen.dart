@@ -1,9 +1,11 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/name_service.dart';
 import 'lobby_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -18,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen>
   final _authService = AuthService();
   final _firestoreService = FirestoreService();
   final _joinCodeController = TextEditingController();
+  final _nameController = TextEditingController();
 
   int _selectedRounds = 3;
   int _selectedMaxPlayers = 4;
@@ -32,13 +35,32 @@ class _HomeScreenState extends State<HomeScreen>
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat();
+
+    // Pre-fill saved name
+    final saved = NameService.savedName;
+    if (saved != null) _nameController.text = saved;
+
+    // Auto-fill join code from invite link (?join=XXXXXX)
+    if (kIsWeb) {
+      final join = Uri.base.queryParameters['join'];
+      if (join != null && join.isNotEmpty) {
+        _joinCodeController.text = join;
+      }
+    }
   }
 
   @override
   void dispose() {
     _joinCodeController.dispose();
+    _nameController.dispose();
     _rotController.dispose();
     super.dispose();
+  }
+
+  String get _effectiveName {
+    final typed = _nameController.text.trim();
+    if (typed.isNotEmpty) return typed;
+    return _authService.getDisplayName();
   }
 
   Future<void> _createGame() async {
@@ -46,11 +68,12 @@ class _HomeScreenState extends State<HomeScreen>
       _showError('Please wait, signing in...');
       return;
     }
+    NameService.save(_effectiveName);
     setState(() => _isLoading = true);
     try {
       final gameId = await _firestoreService.createGame(
         hostId: _authService.currentUserId!,
-        hostName: _authService.getDisplayName(),
+        hostName: _effectiveName,
         maxPlayers: _selectedMaxPlayers,
         totalRounds: _selectedRounds,
       );
@@ -72,12 +95,13 @@ class _HomeScreenState extends State<HomeScreen>
     if (code.isEmpty) { _showError('Please enter a join code'); return; }
     if (!_authService.isSignedIn) { _showError('Please wait, signing in...'); return; }
 
+    NameService.save(_effectiveName);
     setState(() => _isLoading = true);
     try {
       final gameId = await _firestoreService.joinGame(
         joinCode: code,
         playerId: _authService.currentUserId!,
-        playerName: _authService.getDisplayName(),
+        playerName: _effectiveName,
       );
       if (!mounted) return;
       if (gameId != null) {
@@ -192,7 +216,6 @@ class _HomeScreenState extends State<HomeScreen>
 
                   const SizedBox(height: 20),
 
-                  // ── Title ─────────────────────────────────────────────
                   Text('Dice Game', style: AppTheme.display(size: 44))
                       .animate()
                       .fadeIn(duration: 600.ms)
@@ -205,7 +228,27 @@ class _HomeScreenState extends State<HomeScreen>
                     style: AppTheme.heading(size: 16, color: Colors.white70, weight: FontWeight.w400),
                   ).animate().fadeIn(delay: 200.ms, duration: 500.ms),
 
-                  const SizedBox(height: 56),
+                  const SizedBox(height: 32),
+
+                  // ── Player name field ─────────────────────────────────
+                  TextField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      hintText: 'Your name (optional)',
+                      prefixIcon: const Icon(Icons.person, color: AppTheme.gold),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      counterText: '',
+                    ),
+                    maxLength: 20,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ).animate().fadeIn(delay: 250.ms, duration: 500.ms),
+
+                  const SizedBox(height: 24),
 
                   // ── Create Game button ────────────────────────────────
                   SizedBox(
@@ -234,7 +277,6 @@ class _HomeScreenState extends State<HomeScreen>
 
                   const SizedBox(height: 24),
 
-                  // ── Divider ───────────────────────────────────────────
                   Row(
                     children: [
                       const Expanded(child: Divider(color: Colors.white38)),

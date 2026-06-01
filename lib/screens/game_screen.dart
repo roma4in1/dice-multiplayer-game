@@ -8,6 +8,7 @@ import '../models/hand_result.dart';
 import '../models/player.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/sound_service.dart';
 import '../widgets/dice_widget.dart';
 import '../widgets/rolling_dice_widget.dart';
 import 'betting_screen.dart';
@@ -60,6 +61,7 @@ class _GameScreenState extends State<GameScreen> {
     _turnTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) { t.cancel(); return; }
       setState(() => _secondsLeft--);
+      if (_secondsLeft <= 10 && _secondsLeft > 0) SoundService.tick();
       if (_secondsLeft <= 0) {
         t.cancel();
         // Only auto-submit for the player whose turn it actually is
@@ -94,7 +96,7 @@ class _GameScreenState extends State<GameScreen> {
           final values = combo.map((d) => d.value).toList();
           final result = HandEvaluator.evaluateHand('', '', values);
           if (bestResult == null ||
-              HandEvaluator.compareHands(result, bestResult!) > 0) {
+              HandEvaluator.compareHands(result, bestResult) > 0) {
             bestResult = result;
             bestIndices = combo.map((d) => d.index).toList();
           }
@@ -798,7 +800,7 @@ class _GameScreenState extends State<GameScreen> {
                       backgroundColor: AppTheme.navyLight,
                       radius: 20,
                       child: Text(
-                        myPlayer.name[0].toUpperCase(),
+                        myPlayer.nameInitial,
                         style: const TextStyle(
                           color: AppTheme.gold,
                           fontWeight: FontWeight.bold,
@@ -847,6 +849,7 @@ class _GameScreenState extends State<GameScreen> {
                       onPressed: _isRolling
                           ? null
                           : () async {
+                              SoundService.roll();
                               setState(() => _isRolling = true);
                               try {
                                 await _firestoreService.rollMyDice(
@@ -1343,7 +1346,7 @@ class _GameScreenState extends State<GameScreen> {
                     backgroundColor: AppTheme.navyLight,
                     radius: 14,
                     child: Text(
-                      player.name[0].toUpperCase(),
+                      player.nameInitial,
                       style: const TextStyle(
                         color: AppTheme.gold,
                         fontWeight: FontWeight.bold,
@@ -1407,7 +1410,7 @@ class _GameScreenState extends State<GameScreen> {
                 backgroundColor: AppTheme.navyLight,
                 radius: 16,
                 child: Text(
-                  opponent.name[0].toUpperCase(),
+                  opponent.nameInitial,
                   style: const TextStyle(
                     color: AppTheme.gold,
                     fontWeight: FontWeight.bold,

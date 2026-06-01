@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../app_theme.dart';
 import '../models/game_state.dart';
+import '../models/hand_result.dart';
 import '../models/player.dart';
 import '../models/dice_info.dart';
 import '../services/auth_service.dart';
@@ -151,6 +152,20 @@ class _BettingScreenState extends State<BettingScreen> {
                       children: [
                         if (!_betLocked) ...[
                           const SizedBox(height: 14),
+
+                          // Bet suggestion hint from private dice
+                          StreamBuilder<PlayerDice?>(
+                            stream: _firestoreService.getPlayerDiceStream(
+                              widget.gameId,
+                              _authService.currentUserId!,
+                            ),
+                            builder: (context, snap) {
+                              if (!snap.hasData || snap.data == null) {
+                                return const SizedBox();
+                              }
+                              return _buildBetHint(snap.data!);
+                            },
+                          ),
 
                           // Info banner
                           Container(
@@ -429,12 +444,25 @@ class _BettingScreenState extends State<BettingScreen> {
                           child: ElevatedButton(
                             onPressed: _selectedBet != null
                                 ? () async {
+                                    final messenger = ScaffoldMessenger.of(context);
                                     setState(() => _betLocked = true);
-                                    await _firestoreService.submitBet(
-                                      widget.gameId,
-                                      _authService.currentUserId!,
-                                      _selectedBet!,
-                                    );
+                                    try {
+                                      await _firestoreService.submitBet(
+                                        widget.gameId,
+                                        _authService.currentUserId!,
+                                        _selectedBet!,
+                                      ).timeout(const Duration(seconds: 12));
+                                    } catch (e) {
+                                      if (mounted) {
+                                        setState(() => _betLocked = false);
+                                        messenger.showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Failed to submit bet — please try again'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
                                   }
                                 : null,
                             style: ElevatedButton.styleFrom(
@@ -476,6 +504,56 @@ class _BettingScreenState extends State<BettingScreen> {
         },
       ),
     );
+  }
+
+  Widget _buildBetHint(PlayerDice myDice) {
+    final all = myDice.allDice
+        .where((d) => !myDice.usedIndices.contains(d.index))
+        .toList();
+    if (all.length < 3) return const SizedBox();
+
+    HandResult? best;
+    for (int i = 0; i < all.length - 2; i++) {
+      for (int j = i + 1; j < all.length - 1; j++) {
+        for (int k = j + 1; k < all.length; k++) {
+          final vals = [all[i].value, all[j].value, all[k].value];
+          final r = HandEvaluator.evaluateHand('', '', vals);
+          if (best == null || HandEvaluator.compareHands(r, best) > 0) {
+            best = r;
+          }
+        }
+      }
+    }
+    if (best == null) return const SizedBox();
+
+    final (icon, hint) = switch (best.rank) {
+      HandRank.triple  => ('🎯', 'Triple available — MAXIMUM or WINNER looks strong'),
+      HandRank.straight => ('📈', 'Straight possible — MAXIMUM worth considering'),
+      HandRank.pair    => ('✌️', 'Pair available — MINIMUM is a solid bet'),
+      HandRank.highCard => ('🤔', 'Mixed dice — ZERO could pay off big'),
+    };
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.gold.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.gold.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Text(icon, style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Hint: $hint',
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms);
   }
 
   Widget _buildAllPlayersDice(List<Player> players) {
@@ -523,7 +601,7 @@ class _BettingScreenState extends State<BettingScreen> {
                           backgroundColor: AppTheme.navyLight,
                           radius: 14,
                           child: Text(
-                            player.name[0].toUpperCase(),
+                            player.nameInitial,
                             style: const TextStyle(
                               color: AppTheme.gold,
                               fontWeight: FontWeight.bold,

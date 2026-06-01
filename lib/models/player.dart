@@ -7,6 +7,9 @@ class Player {
   final int totalPoints;
   final String? currentBet;
   final DateTime joinedAt;
+  final int handsWon;
+  final int betsWon;
+  final String bestHandRank; // 'highCard' | 'pair' | 'straight' | 'triple'
 
   const Player({
     required this.id,
@@ -17,7 +20,13 @@ class Player {
     this.totalPoints = 0,
     this.currentBet,
     required this.joinedAt,
+    this.handsWon = 0,
+    this.betsWon = 0,
+    this.bestHandRank = 'highCard',
   });
+
+  /// Safe first-letter accessor — never throws on empty names.
+  String get nameInitial => name.isNotEmpty ? name[0].toUpperCase() : '?';
 
   Player copyWith({
     String? id,
@@ -28,6 +37,9 @@ class Player {
     int? totalPoints,
     String? currentBet,
     DateTime? joinedAt,
+    int? handsWon,
+    int? betsWon,
+    String? bestHandRank,
   }) {
     return Player(
       id: id ?? this.id,
@@ -38,6 +50,9 @@ class Player {
       totalPoints: totalPoints ?? this.totalPoints,
       currentBet: currentBet ?? this.currentBet,
       joinedAt: joinedAt ?? this.joinedAt,
+      handsWon: handsWon ?? this.handsWon,
+      betsWon: betsWon ?? this.betsWon,
+      bestHandRank: bestHandRank ?? this.bestHandRank,
     );
   }
 
@@ -51,6 +66,9 @@ class Player {
       'totalPoints': totalPoints,
       'currentBet': currentBet,
       'joinedAt': joinedAt.toIso8601String(),
+      'handsWon': handsWon,
+      'betsWon': betsWon,
+      'bestHandRank': bestHandRank,
     };
   }
 
@@ -64,6 +82,9 @@ class Player {
       totalPoints: json['totalPoints'] as int? ?? 0,
       currentBet: json['currentBet'] as String?,
       joinedAt: DateTime.parse(json['joinedAt'] as String),
+      handsWon: json['handsWon'] as int? ?? 0,
+      betsWon: json['betsWon'] as int? ?? 0,
+      bestHandRank: json['bestHandRank'] as String? ?? 'highCard',
     );
   }
 }
