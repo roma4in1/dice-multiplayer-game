@@ -75,18 +75,38 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _autoSubmit(PlayerDice myDice, GameState game) async {
+    if (_isSubmittingHand) return; // in-flight call — let it finish
     final myId = _authService.currentUserId!;
     if (game.handSubmissions.containsKey(myId)) return;
-    // Pick first 3 available dice
+
     final available = myDice.allDice
         .where((d) => !myDice.usedIndices.contains(d.index))
-        .take(3)
-        .map((d) => d.index)
         .toList();
     if (available.length < 3) return;
+
+    // Try every combination of 3 dice and keep the strongest hand
+    List<int>? bestIndices;
+    HandResult? bestResult;
+    for (int i = 0; i < available.length - 2; i++) {
+      for (int j = i + 1; j < available.length - 1; j++) {
+        for (int k = j + 1; k < available.length; k++) {
+          final combo = [available[i], available[j], available[k]];
+          final values = combo.map((d) => d.value).toList();
+          final result = HandEvaluator.evaluateHand('', '', values);
+          if (bestResult == null ||
+              HandEvaluator.compareHands(result, bestResult!) > 0) {
+            bestResult = result;
+            bestIndices = combo.map((d) => d.index).toList();
+          }
+        }
+      }
+    }
+
+    if (bestIndices == null) return;
+    final chosen = bestIndices;
     setState(() => _selectedDiceIndices
       ..clear()
-      ..addAll(available));
+      ..addAll(chosen));
     await _submitHand();
   }
 
@@ -335,15 +355,15 @@ class _GameScreenState extends State<GameScreen> {
             left: 0,
             child: SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 12, left: 12),
-                child: _EmojiChatPanel(
-                  gameId: widget.gameId,
-                  myPlayerId: myPlayerId,
-                  myPlayerName: myPlayerName,
-                  chatMessages: game.chatMessages,
-                  firestoreService: _firestoreService,
-                ),
+              // minimum ensures we clear browser toolbars on older Android phones
+              // even when the OS reports zero safe-area insets
+              minimum: const EdgeInsets.only(bottom: 64, left: 12),
+              child: _EmojiChatPanel(
+                gameId: widget.gameId,
+                myPlayerId: myPlayerId,
+                myPlayerName: myPlayerName,
+                chatMessages: game.chatMessages,
+                firestoreService: _firestoreService,
               ),
             ),
           ),
@@ -654,6 +674,7 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _submitHand() async {
     if (_selectedDiceIndices.length != 3) return;
+    if (_isSubmittingHand) return; // prevent concurrent submissions
 
     setState(() => _isSubmittingHand = true);
 
@@ -661,8 +682,8 @@ class _GameScreenState extends State<GameScreen> {
       await _firestoreService.playHand(
         widget.gameId,
         _authService.currentUserId!,
-        _selectedDiceIndices,
-      );
+        List<int>.from(_selectedDiceIndices), // snapshot indices before any clear
+      ).timeout(const Duration(seconds: 12));
 
       if (mounted) {
         setState(() {
@@ -680,8 +701,11 @@ class _GameScreenState extends State<GameScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isSubmittingHand = false);
+        final msg = e.toString().contains('TimeoutException')
+            ? 'Connection slow — please try again'
+            : 'Error: $e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
         );
       }
     }
@@ -824,13 +848,22 @@ class _GameScreenState extends State<GameScreen> {
                           ? null
                           : () async {
                               setState(() => _isRolling = true);
-                              await _firestoreService.rollMyDice(
-                                widget.gameId,
-                                _authService.currentUserId!,
-                                myPlayer.name,
-                              );
-                              if (mounted) {
-                                setState(() => _isRolling = false);
+                              try {
+                                await _firestoreService.rollMyDice(
+                                  widget.gameId,
+                                  _authService.currentUserId!,
+                                  myPlayer.name,
+                                ).timeout(const Duration(seconds: 12));
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Roll failed — please try again'),
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) setState(() => _isRolling = false);
                               }
                             },
                       style: ElevatedButton.styleFrom(
@@ -1454,25 +1487,21 @@ class _ThinkingDots extends StatefulWidget {
   State<_ThinkingDots> createState() => _ThinkingDotsState();
 }
 
-class _ThinkingDotsState extends State<_ThinkingDots>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
+class _ThinkingDotsState extends State<_ThinkingDots> {
   int _dot = 0;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 500))
-      ..addListener(() {
-        if (mounted) setState(() => _dot = (_dot + 1) % 4);
-      })
-      ..repeat();
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() => _dot = (_dot + 1) % 4);
+    });
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 

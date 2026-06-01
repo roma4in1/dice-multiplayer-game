@@ -420,29 +420,18 @@ class FirestoreService {
         return playerDice.allDice.firstWhere((d) => d.index == index);
       }).toList();
 
-      // Prepare hand submission (hide values for hidden dice until all submit)
-      final diceValues = selectedDice.map((d) {
-        // If it's a hidden die, store null until reveal phase
-        if (d.type == DiceType.red || d.type == DiceType.blue) {
-          return null; // Hidden until all players submit
-        }
-        return d.value;
-      }).toList();
-
-      final actualValues = selectedDice.map((d) => d.value).toList();
+      final diceValues = selectedDice.map((d) => d.value).toList();
       final diceTypes = selectedDice
           .map((d) => d.type.toString().split('.').last)
           .toList();
 
-      // Update game with hand submission
+      // Update game with hand submission — all dice values shown immediately
       await _firestore.collection('games').doc(gameId).update({
         'handSubmissions.$playerId': {
           'playerId': playerId,
           'selectedIndices': selectedIndices,
-          'diceValues': diceValues, // Visible dice shown, hidden are null
-          'actualValues': actualValues, // Store actual for later reveal
+          'diceValues': diceValues,
           'diceTypes': diceTypes,
-          'revealed': false,
         },
       });
 
@@ -494,7 +483,6 @@ class FirestoreService {
         });
 
         if (shouldEvaluate) {
-          await _revealHiddenDice(gameId, updatedSubmissions);
           await _evaluateHand(gameId, players, updatedSubmissions);
         }
       } else {
@@ -510,25 +498,6 @@ class FirestoreService {
     }
   }
 
-  // Reveal hidden dice after all players submit
-  Future<void> _revealHiddenDice(
-    String gameId,
-    Map<String, dynamic> submissions,
-  ) async {
-    final updates = <String, dynamic>{};
-
-    for (var entry in submissions.entries) {
-      final playerId = entry.key;
-      final submission = entry.value as Map<String, dynamic>;
-      final actualValues = List<int>.from(submission['actualValues']);
-
-      updates['handSubmissions.$playerId.diceValues'] = actualValues;
-      updates['handSubmissions.$playerId.revealed'] = true;
-    }
-
-    await _firestore.collection('games').doc(gameId).update(updates);
-  }
-
   Future<void> _evaluateHand(
     String gameId,
     Map<String, dynamic> players,
@@ -540,7 +509,7 @@ class FirestoreService {
     for (var entry in submissions.entries) {
       final playerId = entry.key;
       final submission = entry.value as Map<String, dynamic>;
-      final diceValues = List<int>.from(submission['actualValues']);
+      final diceValues = List<int>.from(submission['diceValues']);
       final playerName = players[playerId]['name'] as String;
 
       final result = HandEvaluator.evaluateHand(playerId, playerName, diceValues);
