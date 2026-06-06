@@ -42,6 +42,7 @@ class _GameScreenState extends State<GameScreen> {
   // Floating reaction overlay
   String? _floatingEmoji;
   String? _floatingFromPlayer;
+  int _emojiRevealCount = 0;
   Timer? _reactionTimer;
   Map<String, dynamic> _lastSeenReactions = {};
 
@@ -135,8 +136,9 @@ class _GameScreenState extends State<GameScreen> {
     setState(() {
       _floatingEmoji = emoji;
       _floatingFromPlayer = fromName;
+      _emojiRevealCount++;
     });
-    _reactionTimer = Timer(const Duration(seconds: 3), () {
+    _reactionTimer = Timer(const Duration(seconds: 4), () {
       if (mounted) setState(() { _floatingEmoji = null; _floatingFromPlayer = null; });
     });
   }
@@ -329,25 +331,10 @@ class _GameScreenState extends State<GameScreen> {
               left: 0,
               right: 0,
               child: Center(
-                child: Column(
-                  children: [
-                    Text(
-                      _floatingEmoji!,
-                      style: const TextStyle(fontSize: 72),
-                    )
-                        .animate()
-                        .scale(
-                            begin: const Offset(0.3, 0.3),
-                            duration: 400.ms,
-                            curve: Curves.elasticOut)
-                        .then()
-                        .fadeOut(delay: 2.seconds, duration: 600.ms),
-                    Text(
-                      _floatingFromPlayer ?? '',
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 14),
-                    ).animate().fadeIn(duration: 300.ms),
-                  ],
+                child: _FloatingEmojiOverlay(
+                  key: ValueKey(_emojiRevealCount),
+                  emoji: _floatingEmoji!,
+                  fromName: _floatingFromPlayer ?? '',
                 ),
               ),
             ),
@@ -1250,7 +1237,7 @@ class _GameScreenState extends State<GameScreen> {
                       children: [
                         const SizedBox(height: 12),
 
-                  _buildGameTable(game, players),
+                  _buildGameTable(game, players, myPlayerId),
                   const SizedBox(height: 16),
 
                   if (opponents.isNotEmpty) ...[
@@ -1284,7 +1271,7 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _buildGameTable(GameState game, List<Player> players) {
+  Widget _buildGameTable(GameState game, List<Player> players, String myPlayerId) {
     final submissions = game.handSubmissions;
 
     if (submissions.isEmpty) {
@@ -1331,6 +1318,7 @@ class _GameScreenState extends State<GameScreen> {
             final player = players.firstWhere((p) => p.id == playerId);
             final diceValues = List<dynamic>.from(submission['diceValues']);
             final diceTypes = List<String>.from(submission['diceTypes']);
+            final isMe = playerId == myPlayerId;
 
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -1368,15 +1356,19 @@ class _GameScreenState extends State<GameScreen> {
                     child: Wrap(
                       spacing: 6,
                       children: List.generate(3, (index) {
-                        final value = diceValues[index];
+                        final value = diceValues[index] as int?;
                         final type = diceTypes[index];
 
                         Color? color;
                         if (type == 'red') color = AppTheme.diceRed;
                         if (type == 'blue') color = AppTheme.diceBlue;
 
+                        // Hide hidden (red/blue) dice values for opponents
+                        final displayValue =
+                            (isMe || type == 'visible') ? value : null;
+
                         return DiceWidget(
-                          value: value,
+                          value: displayValue,
                           size: 40,
                           color: color,
                         );
@@ -1701,6 +1693,81 @@ class _EmojiChatPanelState extends State<_EmojiChatPanel> {
                 style: const TextStyle(fontSize: 10, color: Colors.white38),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Floating Emoji Overlay ───────────────────────────────────────────────────
+// Own StatefulWidget so its AnimationController is NOT reset by StreamBuilder
+// rebuilds triggered by Firestore updates (which caused 0.5s flicker on mobile).
+class _FloatingEmojiOverlay extends StatefulWidget {
+  final String emoji;
+  final String fromName;
+
+  const _FloatingEmojiOverlay({super.key, required this.emoji, required this.fromName});
+
+  @override
+  State<_FloatingEmojiOverlay> createState() => _FloatingEmojiOverlayState();
+}
+
+class _FloatingEmojiOverlayState extends State<_FloatingEmojiOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    // Total duration matches the timer in _showReaction (4 seconds).
+    _ctrl = AnimationController(
+      duration: const Duration(milliseconds: 4000),
+      vsync: this,
+    );
+
+    // Scale: 0.3 → 1.0 over first 400 ms, then hold.
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(begin: 0.3, end: 1.0)
+            .chain(CurveTween(curve: Curves.elasticOut)),
+        weight: 400,
+      ),
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 3600),
+    ]).animate(_ctrl);
+
+    // Opacity: fully visible for 3.4 s, then fade out over 600 ms.
+    _opacity = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween(1.0), weight: 3400),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 600),
+    ]).animate(_ctrl);
+
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) => Opacity(
+        opacity: _opacity.value,
+        child: Transform.scale(scale: _scale.value, child: child),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(widget.emoji, style: const TextStyle(fontSize: 72)),
+          Text(
+            widget.fromName,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
         ],
       ),
     );

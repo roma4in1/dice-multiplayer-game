@@ -34,6 +34,14 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    // Unregister any cached service workers so Safari always loads fresh code.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        registrations.forEach(function(r) { r.unregister(); });
+      });
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
